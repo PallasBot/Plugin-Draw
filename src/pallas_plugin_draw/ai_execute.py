@@ -17,6 +17,7 @@ from .ai_runtime_client import (
     gateway_payload_from_backends,
     generate_image_via_ai_service,
 )
+from .draw_stats_store import classify_draw_gateway, record_draw_stats, resolve_draw_stats_cost
 from .draw_usage_store import bump_pallas_draw_usage
 from .image_api import (
     message_at_user,
@@ -87,6 +88,25 @@ async def run_ai_service_draw(
             persist_draw=(usage_key[0], usage_key[1]),
         )
         bump_pallas_draw_usage(usage_key, count_usage)
+        gw, provider_key = classify_draw_gateway(
+            provider_id=ai_result.provider_id,
+            name=ai_result.backend_id,
+        )
+        model = (cfg.model or "").strip()
+        cost_amount, cost_currency = resolve_draw_stats_cost(
+            images=1,
+            provider_id=ai_result.provider_id,
+            backend_name=ai_result.backend_id,
+        )
+        record_draw_stats(
+            ok=True,
+            gateway=gw,
+            provider=provider_key,
+            model=model,
+            source="ai_runtime",
+            cost_amount=cost_amount,
+            cost_currency=cost_currency or None,
+        )
         return AiDrawRunResult(handled=True, image_sent=True)
 
     record_ai_runtime_failure(ai_result.reply_text or "ai_runtime_failed")
@@ -97,6 +117,17 @@ async def run_ai_service_draw(
         f"reply={ai_result.reply_text[:120]!r}",
     )
     if not cfg.ai_runtime_fallback_to_plugin:
+        gw, provider_key = classify_draw_gateway(
+            provider_id=ai_result.provider_id,
+            name=ai_result.backend_id,
+        )
+        record_draw_stats(
+            ok=False,
+            gateway=gw,
+            provider=provider_key,
+            model=(cfg.model or "").strip(),
+            source="ai_runtime",
+        )
         await matcher.finish(
             message_at_user(user_id, ai_result.reply_text or DRAW_VAGUE_REPLY)
         )

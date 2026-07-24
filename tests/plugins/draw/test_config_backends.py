@@ -37,6 +37,60 @@ def test_migrate_legacy_gateway_promotes_first_backend() -> None:
     assert backends[0].name == "主站"
 
 
+def test_api_backends_keeps_provider_id() -> None:
+    def find(pid: str):
+        return {
+            "id": pid,
+            "base_url": f"https://{pid}.example/v1",
+            "api_key": f"sk-{pid}",
+            "default_model": "m",
+        }
+
+    cfg = Config(
+        pallas_image_provider_id="prov-a",
+        pallas_image_base_url="",
+        pallas_image_api_key="",
+        pallas_image_model="m1",
+        pallas_image_api_backends=[
+            {"provider_id": "prov-b", "base_url": "", "api_key": "", "model": "m2"},
+        ],
+    )
+    with (
+        patch("pallas_plugin_draw.config.find_provider", side_effect=find),
+        patch(
+            "pallas_plugin_draw.config.resolve_provider_base_url",
+            side_effect=lambda row: row["base_url"],
+        ),
+        patch(
+            "pallas_plugin_draw.config.resolve_provider_api_key",
+            side_effect=lambda row: row["api_key"],
+        ),
+    ):
+        backends = ImageGenSettings(cfg).api_backends()
+    assert backends[0].provider_id == "prov-a"
+    assert backends[1].provider_id == "prov-b"
+
+
+def test_api_backends_keeps_cost_per_image() -> None:
+    cfg = Config(
+        pallas_image_base_url="https://primary.example/",
+        pallas_image_api_key="sk-p",
+        pallas_image_model="m1",
+        pallas_image_cost_per_image=0.05,
+        pallas_image_api_backends=[
+            {
+                "base_url": "https://b.example/",
+                "api_key": "sk-b",
+                "model": "m2",
+                "cost_per_image": 0.12,
+            },
+        ],
+    )
+    backends = ImageGenSettings(cfg).api_backends()
+    assert backends[0].cost_per_image == 0.05
+    assert backends[1].cost_per_image == 0.12
+
+
 def test_migrate_legacy_gateway_skips_when_primary_set() -> None:
     cfg = Config(
         pallas_image_base_url="https://primary.example/",

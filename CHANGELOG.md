@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+## [4.1.1] - 2026-07-24
+
+- feat(stats): 运维向日统计（成功/失败、按网关/Provider/模型）与可选费用累计
+- feat(config): 主/备线 `cost_per_image` 与全局 `pallas_image_stats_cost_currency`
+
 ## [4.1.0] - 2026-07-24
 
 - feat(config): 主/备线可填 `provider_id`，运行时沿用 AI · Provider 的 base_url 与 api_key

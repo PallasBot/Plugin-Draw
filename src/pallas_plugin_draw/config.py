@@ -7,8 +7,7 @@ from typing import Any, Self
 from nonebot import logger
 from pydantic import BaseModel, ConfigDict, Field
 
-from pallas.api.config import config_from_env, install_hot_reload_config
-from pallas.api.config import field_help
+from pallas.api.config import config_from_env, field_help, install_hot_reload_config
 from pallas.api.llm import (
     find_provider,
     resolve_provider_api_key,
@@ -61,6 +60,14 @@ class ImageBackendEntry(BaseModel):
             "与全局 pallas_image_response_format 及厂商文档中的 output_format 不是同一参数。"
         ),
     )
+    cost_per_image: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=field_help(
+            "本条网关单张成功费用（可选）",
+            "用于 AI 统计页按网关累计费用；0 表示不计费。币种见全局「画画用量统计币种」",
+        ),
+    )
 
 
 class Config(BaseModel, extra="ignore"):
@@ -95,6 +102,14 @@ class Config(BaseModel, extra="ignore"):
         description=field_help(
             "主线路在界面里显示的名称",
             "留空显示为「主网关」",
+        ),
+    )
+    pallas_image_cost_per_image: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=field_help(
+            "主线路单张成功费用（可选）",
+            "用于 AI 统计页累计；0 表示不计费。备线在各自网关条目里单独填写",
         ),
     )
     pallas_image_api_backends: list[ImageBackendEntry] = Field(
@@ -211,7 +226,7 @@ class Config(BaseModel, extra="ignore"):
         default=90.0,
         ge=0.0,
         le=600.0,
-        description="备用网关单次 POST 硬上限（秒）；主网关不受此项限制，仅用请求超时与总预算。0 表示备用仅用均分不设硬顶。",
+        description="备用网关单次 POST 硬上限（秒）；主网关不受此项限制。0 表示备用仅用均分不设硬顶。",
     )
     pallas_image_ref_download_timeout: float = Field(
         default=30.0,
@@ -224,6 +239,13 @@ class Config(BaseModel, extra="ignore"):
         ge=0,
         le=64,
         description="进程内同时进行中的画画任务上限（含已回复「欢呼吧」尚未结束的）；0 不限制。",
+    )
+    pallas_image_stats_cost_currency: str = Field(
+        default="",
+        description=field_help(
+            "画画用量统计的费用币种（可选）",
+            "如 CNY、USD；各网关单价共用此币种。留空则有费用时也不强制标注币种",
+        ),
     )
 
     @classmethod
@@ -315,6 +337,8 @@ def migrate_legacy_gateway_config(c: Config) -> Config:
     }
     if not (c.pallas_image_primary_name or "").strip() and first_name:
         updates["pallas_image_primary_name"] = first_name
+    if float(first.cost_per_image or 0) > 0 and float(c.pallas_image_cost_per_image or 0) <= 0:
+        updates["pallas_image_cost_per_image"] = float(first.cost_per_image)
     return c.model_copy(update=updates)
 
 
@@ -349,6 +373,8 @@ class ImageApiBackend:
     label: str
     name: str = ""
     omit_response_format: bool = False
+    provider_id: str = ""
+    cost_per_image: float = 0.0
 
 
 class ImageGenSettings:
@@ -393,11 +419,17 @@ class ImageGenSettings:
             *,
             name: str = "",
             omit_response_format: bool = False,
+            provider_id: str = "",
+            cost_per_image: float = 0.0,
         ) -> None:
             sig = (url, key, model)
             if sig in seen:
                 return
             seen.add(sig)
+            try:
+                unit = max(0.0, float(cost_per_image or 0))
+            except (TypeError, ValueError):
+                unit = 0.0
             out.append(
                 ImageApiBackend(
                     base_url=url,
@@ -406,10 +438,13 @@ class ImageGenSettings:
                     label=label,
                     name=(name or "").strip(),
                     omit_response_format=omit_response_format,
+                    provider_id=(provider_id or "").strip(),
+                    cost_per_image=unit,
                 )
             )
 
         primary_name = (self._c.pallas_image_primary_name or "").strip()
+        primary_provider_id = (self._c.pallas_image_provider_id or "").strip()
         primary = resolve_gateway_credentials(
             provider_id=self._c.pallas_image_provider_id,
             base_url=self._c.pallas_image_base_url,
@@ -420,7 +455,15 @@ class ImageGenSettings:
         )
         if primary is not None:
             url, key, model = primary
-            append(url, key, model, "primary", name=primary_name)
+            append(
+                url,
+                key,
+                model,
+                "primary",
+                name=primary_name,
+                provider_id=primary_provider_id,
+                cost_per_image=self._c.pallas_image_cost_per_image,
+            )
         for i, entry in enumerate(self._c.pallas_image_api_backends):
             resolved = resolve_gateway_credentials(
                 provider_id=entry.provider_id,
@@ -440,6 +483,8 @@ class ImageGenSettings:
                 f"fallback-{i}",
                 name=(entry.name or "").strip(),
                 omit_response_format=entry.omit_response_format,
+                provider_id=(entry.provider_id or "").strip(),
+                cost_per_image=entry.cost_per_image,
             )
         return out
 
@@ -558,6 +603,10 @@ class ImageGenSettings:
     @property
     def draw_max_pending(self) -> int:
         return self._c.pallas_image_draw_max_pending
+
+    @property
+    def stats_cost_currency(self) -> str:
+        return (self._c.pallas_image_stats_cost_currency or "").strip()
 
 
 def on_draw_config_reload(cfg: Config) -> None:

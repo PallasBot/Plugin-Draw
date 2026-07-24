@@ -19,6 +19,11 @@ from pallas.api.messages import (
 )
 
 from .config import ImageApiBackend
+from .draw_stats_store import (
+    record_draw_stats,
+    record_draw_stats_for_backend,
+    resolve_draw_stats_cost,
+)
 from .draw_usage_store import bump_pallas_draw_usage
 from .image_api import (
     CffiRequestsError,
@@ -189,6 +194,18 @@ async def run_backend_param_attempts(
                     finish_on_error=not still_retrying,
                 ):
                     bump_pallas_draw_usage(usage_key, count_usage)
+                    cost_amount, cost_currency = resolve_draw_stats_cost(
+                        backend=backend,
+                        images=1,
+                        response_body=body_text,
+                    )
+                    record_draw_stats_for_backend(
+                        backend,
+                        ok=True,
+                        source="plugin",
+                        cost_amount=cost_amount,
+                        cost_currency=cost_currency or None,
+                    )
                     return True
                 issue = image_api_body_issue_label(body_text) or "image_send_failed"
                 log_image_backend_unusable(
@@ -271,6 +288,7 @@ async def run_backend_param_attempts(
 
 
 async def finish_draw_failure(matcher, user_id: int, last_body: str) -> None:
+    record_draw_stats(ok=False, gateway="manual", provider="exhausted", source="plugin")
     await matcher.finish(
         message_at_user(
             user_id, user_failure_reply(last_body, vague_reply=DRAW_VAGUE_REPLY)
