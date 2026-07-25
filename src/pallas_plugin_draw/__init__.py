@@ -1,11 +1,12 @@
 from nonebot.plugin import PluginMetadata
-
 from pallas.api.metadata import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
+    SCENE_GROUP,
+    join_usage,
+    usage_line,
 )
-from pallas.api.metadata import SCENE_GROUP, join_usage, usage_line
 from pallas.api.platform import llm_command_tool_row
 from pallas.api.storage import plugin_storage_list, plugin_storage_row
 from pallas.product.llm.knowledge.declare import knowledge_source_row
@@ -72,17 +73,13 @@ __plugin_meta__ = PluginMetadata(
                     {
                         "title": "如何生图",
                         "content": (
-                            "在群内发送「牛牛画画」加画面描述即可按文字生图；"
-                            "描述尽量具体，保留用户原话效果更好。"
+                            "在群内发送「牛牛画画」加画面描述即可按文字生图；描述尽量具体，保留用户原话效果更好。"
                         ),
                         "keywords": "画画,生图,画图,怎么画,牛牛画画",
                     },
                     {
                         "title": "参考图改图",
-                        "content": (
-                            "可在「牛牛画画」消息中附图，或回复某张图片并发送改图描述；"
-                            "支持多张参考图。"
-                        ),
+                        "content": ("可在「牛牛画画」消息中附图，或回复某张图片并发送改图描述；支持多张参考图。"),
                         "keywords": "改图,参考图,附图,回复图片,参考",
                     },
                     {
@@ -99,5 +96,5 @@ __plugin_meta__ = PluginMetadata(
     },
 )
 
-from . import draw as _pallas_draw  # noqa: E402, F401
-from . import startup as _draw_startup  # noqa: E402, F401
+from . import draw as _pallas_draw  # noqa: F401
+from . import startup as _draw_startup  # noqa: F401

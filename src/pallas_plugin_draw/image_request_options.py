@@ -47,13 +47,7 @@ class ImageGenRequestOptions:
 
 def response_format_attempts(configured: str | None = None) -> list[str]:
     primary = (
-        (
-            configured
-            if configured is not None
-            else (image_gen_config.response_format or "b64_json")
-        )
-        .strip()
-        .lower()
+        (configured if configured is not None else (image_gen_config.response_format or "b64_json")).strip().lower()
     )
     if primary == "b64_json":
         return ["b64_json", "url"]
@@ -202,10 +196,7 @@ def capped_param_attempts(
         with_ref_urls=with_ref_urls,
         omit_response_format=omit_response_format,
     )
-    seen = {
-        (o.size, o.aspect_ratio, o.quality, o.response_format, o.include_ref_images)
-        for o in out
-    }
+    seen = {(o.size, o.aspect_ratio, o.quality, o.response_format, o.include_ref_images) for o in out}
     for o in slow:
         key = (
             o.size,

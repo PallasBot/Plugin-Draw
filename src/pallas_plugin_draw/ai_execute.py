@@ -17,7 +17,11 @@ from .ai_runtime_client import (
     gateway_payload_from_backends,
     generate_image_via_ai_service,
 )
-from .draw_stats_store import classify_draw_gateway, record_draw_stats, resolve_draw_stats_cost
+from .draw_stats_store import (
+    classify_draw_gateway,
+    record_draw_stats,
+    resolve_draw_stats_cost,
+)
 from .draw_usage_store import bump_pallas_draw_usage
 from .image_api import (
     message_at_user,
@@ -128,9 +132,7 @@ async def run_ai_service_draw(
             model=(cfg.model or "").strip(),
             source="ai_runtime",
         )
-        await matcher.finish(
-            message_at_user(user_id, ai_result.reply_text or DRAW_VAGUE_REPLY)
-        )
+        await matcher.finish(message_at_user(user_id, ai_result.reply_text or DRAW_VAGUE_REPLY))
         return AiDrawRunResult(handled=True, image_sent=False)
     logger.info(f"bot [{bot_id}] draw fallback to plugin runtime in group [{group_id}]")
     return AiDrawRunResult(handled=False, fallback_plugin=True)

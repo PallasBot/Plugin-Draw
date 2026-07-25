@@ -9,7 +9,6 @@ from typing import Any
 import httpx
 from nonebot import logger
 from nonebot.exception import FinishedException
-
 from pallas.api.messages import (
     http_body_rejects_response_format,
     http_status_should_skip_backend,
@@ -19,6 +18,7 @@ from pallas.api.messages import (
     user_failure_reply,
 )
 
+from .afdian_bridge import apply_usage_after_success
 from .config import ImageApiBackend
 from .draw_stats_store import (
     record_draw_stats,
@@ -26,7 +26,6 @@ from .draw_stats_store import (
     resolve_draw_stats_cost,
 )
 from .draw_usage_store import bump_pallas_draw_usage
-from .afdian_bridge import apply_usage_after_success
 from .image_api import (
     CffiRequestsError,
     image_api_body_issue_label,
@@ -158,9 +157,7 @@ async def run_backend_param_attempts(
             req_started = time.perf_counter()
             try:
                 async with image_gen_semaphore:
-                    status, body_text = await post_request(
-                        backend, req_opts, req_timeout_cap
-                    )
+                    status, body_text = await post_request(backend, req_opts, req_timeout_cap)
             except DrawTotalTimeoutError:
                 raise
             except (
@@ -186,8 +183,7 @@ async def run_backend_param_attempts(
                     )
                     continue
                 logger.warning(
-                    f"bot [{bot_id}] draw {op} transport error "
-                    f"backend={backend.label} group=[{group_id}]: {err_text}",
+                    f"bot [{bot_id}] draw {op} transport error backend={backend.label} group=[{group_id}]: {err_text}",
                 )
                 break
             last_body_holder[:] = [body_text]
@@ -241,9 +237,7 @@ async def run_backend_param_attempts(
                         await matcher.finish(
                             optional_message_at_user(
                                 reply_at,
-                                user_failure_reply(
-                                    body_text, vague_reply=DRAW_VAGUE_REPLY
-                                ),
+                                user_failure_reply(body_text, vague_reply=DRAW_VAGUE_REPLY),
                             )
                         )
                         return True
@@ -258,11 +252,7 @@ async def run_backend_param_attempts(
                 break
             if http_status_should_skip_backend(status):
                 skip_backend = True
-                if (
-                    op == "edits"
-                    and http_status_edits_unsupported(status)
-                    and edits_abort_holder is not None
-                ):
+                if op == "edits" and http_status_edits_unsupported(status) and edits_abort_holder is not None:
                     edits_abort_holder[0] = True
                 if still_retrying:
                     logger.info(

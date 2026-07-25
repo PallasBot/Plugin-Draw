@@ -91,7 +91,7 @@ def _bump_row(
 
 
 def _rollover_if_needed_locked() -> None:
-    global _day_key, _ok_count, _fail_count, _image_count, _cost_total, _cost_currency  # noqa: PLW0603
+    global _day_key, _ok_count, _fail_count, _image_count, _cost_total, _cost_currency
     today = today_key()
     if _day_key == today:
         return
@@ -113,7 +113,7 @@ def _rollover_if_needed_locked() -> None:
 
 
 def _load_today_locked() -> None:
-    global _ok_count, _fail_count, _image_count, _cost_total, _cost_currency  # noqa: PLW0603
+    global _ok_count, _fail_count, _image_count, _cost_total, _cost_currency
     path = stats_file_path()
     if not path.is_file():
         return
@@ -300,18 +300,14 @@ def resolve_draw_stats_cost(
     if unit <= 0:
         unit = _lookup_gateway_unit_price(
             provider_id=provider_id or getattr(backend, "provider_id", None),
-            backend_name=backend_name
-            or getattr(backend, "name", None)
-            or getattr(backend, "label", None),
+            backend_name=backend_name or getattr(backend, "name", None) or getattr(backend, "label", None),
         )
     if unit <= 0:
         return 0.0, ""
     try:
         from .config import get_draw_config
 
-        cur = str(
-            getattr(get_draw_config(), "pallas_image_stats_cost_currency", "") or ""
-        ).strip().upper()
+        cur = str(getattr(get_draw_config(), "pallas_image_stats_cost_currency", "") or "").strip().upper()
     except Exception:
         cur = ""
     imgs = max(1, int(images or 1))
@@ -334,7 +330,7 @@ def record_draw_stats(
     try:
         with _lock:
             _rollover_if_needed_locked()
-            global _ok_count, _fail_count, _image_count, _cost_total, _cost_currency  # noqa: PLW0603
+            global _ok_count, _fail_count, _image_count, _cost_total, _cost_currency
             cost = max(0.0, float(cost_amount or 0))
             imgs = max(0, int(images)) if ok else 0
             if ok:
@@ -388,9 +384,7 @@ def draw_stats_snapshot(*, include_persisted: bool = True) -> dict[str, Any]:
     with _lock:
         _rollover_if_needed_locked()
         snap = _snapshot_locked()
-    if include_persisted and not (
-        snap.get("ok_count") or snap.get("fail_count") or snap.get("by_model")
-    ):
+    if include_persisted and not (snap.get("ok_count") or snap.get("fail_count") or snap.get("by_model")):
         path = stats_file_path()
         if path.is_file():
             try:
@@ -413,7 +407,7 @@ def flush_draw_stats_sync() -> None:
 
 def reset_draw_stats_for_tests() -> None:
     """仅测试用。"""
-    global _day_key, _ok_count, _fail_count, _image_count, _cost_total, _cost_currency  # noqa: PLW0603
+    global _day_key, _ok_count, _fail_count, _image_count, _cost_total, _cost_currency
     with _lock:
         _day_key = ""
         _ok_count = 0

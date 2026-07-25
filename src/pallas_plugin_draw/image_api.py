@@ -12,7 +12,6 @@ from curl_cffi.requests import AsyncSession as CffiAsyncSession
 from curl_cffi.requests import RequestsError as CffiRequestsError
 from nonebot import logger
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
-
 from pallas.api.media import (
     ReferenceResolveResult,
     bytes_from_reference_token,
@@ -143,9 +142,7 @@ async def try_httpx_after_cffi_timeout(
     cap = httpx_cap_after_cffi_timeout(req_timeout_cap)
     if cap is None:
         return None
-    logger.info(
-        f"draw cffi read timeout, retry httpx cap={cap:.0f}s (prioritize image)"
-    )
+    logger.info(f"draw cffi read timeout, retry httpx cap={cap:.0f}s (prioritize image)")
     return await httpx_call(cap)
 
 
@@ -213,13 +210,9 @@ async def curl_post_generations(
     req_timeout_cap: float | None = None,
 ) -> tuple[int, str]:
     if not shutil.which("curl"):
-        raise RuntimeError(
-            "未找到 curl 可执行文件，请安装 curl 或将 pallas_image_http_transport 设为 httpx"
-        )
+        raise RuntimeError("未找到 curl 可执行文件，请安装 curl 或将 pallas_image_http_transport 设为 httpx")
     timeout_s = int(max(10, min(effective_request_timeout(req_timeout_cap), 600)))
-    with tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", suffix=".json", delete=False
-    ) as tf:
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as tf:
         json.dump(payload, tf, ensure_ascii=False)
         body_path = tf.name
     try:
@@ -278,30 +271,20 @@ async def post_generations_with_transport(
     mode = effective_http_transport()
     cfg = image_gen_config
     if mode == "curl":
-        return await curl_post_generations(
-            url, headers, payload, req_timeout_cap=req_timeout_cap
-        )
+        return await curl_post_generations(url, headers, payload, req_timeout_cap=req_timeout_cap)
     if mode == "httpx":
-        return await httpx_post_generations(
-            client, url, headers, payload, req_timeout_cap=req_timeout_cap
-        )
+        return await httpx_post_generations(client, url, headers, payload, req_timeout_cap=req_timeout_cap)
     if mode == "cffi":
-        return await curl_cffi_post_generations(
-            url, headers, payload, req_timeout_cap=req_timeout_cap
-        )
+        return await curl_cffi_post_generations(url, headers, payload, req_timeout_cap=req_timeout_cap)
     tcap = req_timeout_cap
     if (cfg.tls_impersonate or "").strip():
         try:
-            return await curl_cffi_post_generations(
-                url, headers, payload, req_timeout_cap=tcap
-            )
+            return await curl_cffi_post_generations(url, headers, payload, req_timeout_cap=tcap)
         except (CffiRequestsError, OSError, ValueError) as e:
             ret = await try_httpx_after_cffi_timeout(
                 e,
                 tcap,
-                lambda cap: httpx_post_generations(
-                    client, url, headers, payload, req_timeout_cap=cap
-                ),
+                lambda cap: httpx_post_generations(client, url, headers, payload, req_timeout_cap=cap),
             )
             if ret is not None:
                 return ret
@@ -309,19 +292,13 @@ async def post_generations_with_transport(
                 raise
             logger.warning(f"draw generations curl_cffi failed, fallback httpx: {e}")
     try:
-        return await httpx_post_generations(
-            client, url, headers, payload, req_timeout_cap=tcap
-        )
+        return await httpx_post_generations(client, url, headers, payload, req_timeout_cap=tcap)
     except httpx.ConnectError as e:
         logger.warning(f"draw generations httpx connect failed, fallback curl: {e}")
-        return await curl_post_generations(
-            url, headers, payload, req_timeout_cap=req_timeout_cap
-        )
+        return await curl_post_generations(url, headers, payload, req_timeout_cap=req_timeout_cap)
 
 
-def should_send_response_format(
-    backend: ImageApiBackend, opts: ImageGenRequestOptions
-) -> bool:
+def should_send_response_format(backend: ImageApiBackend, opts: ImageGenRequestOptions) -> bool:
     if backend.omit_response_format:
         return False
     return bool(opts.response_format)
@@ -388,9 +365,7 @@ async def curl_cffi_post_edits(
     headers = image_gen_auth_headers_multipart(backend)
     mp = CurlMime()
     for i, blob in enumerate(image_blobs):
-        mp.addpart(
-            "image", data=blob, filename=f"ref_{i}.png", content_type="image/png"
-        )
+        mp.addpart("image", data=blob, filename=f"ref_{i}.png", content_type="image/png")
     data = edit_request_fields(prompt, backend, options=options)
     req_timeout = effective_request_timeout(req_timeout_cap)
     async with CffiAsyncSession() as session:
@@ -473,22 +448,14 @@ async def post_edits_with_transport(
     cfg = image_gen_config
     tcap = req_timeout_cap
     if mode == "curl":
-        return await curl_post_edits(
-            image_blobs, prompt, backend, options=options, req_timeout_cap=tcap
-        )
+        return await curl_post_edits(image_blobs, prompt, backend, options=options, req_timeout_cap=tcap)
     if mode == "httpx":
-        return await httpx_post_edits(
-            client, image_blobs, prompt, backend, options=options, req_timeout_cap=tcap
-        )
+        return await httpx_post_edits(client, image_blobs, prompt, backend, options=options, req_timeout_cap=tcap)
     if mode == "cffi":
-        return await curl_cffi_post_edits(
-            image_blobs, prompt, backend, options=options, req_timeout_cap=tcap
-        )
+        return await curl_cffi_post_edits(image_blobs, prompt, backend, options=options, req_timeout_cap=tcap)
     if (cfg.tls_impersonate or "").strip():
         try:
-            return await curl_cffi_post_edits(
-                image_blobs, prompt, backend, options=options, req_timeout_cap=tcap
-            )
+            return await curl_cffi_post_edits(image_blobs, prompt, backend, options=options, req_timeout_cap=tcap)
         except (CffiRequestsError, OSError, ValueError) as e:
             ret = await try_httpx_after_cffi_timeout(
                 e,
@@ -508,14 +475,10 @@ async def post_edits_with_transport(
                 raise
             logger.warning(f"draw edits curl_cffi failed, fallback httpx: {e}")
     try:
-        return await httpx_post_edits(
-            client, image_blobs, prompt, backend, options=options, req_timeout_cap=tcap
-        )
+        return await httpx_post_edits(client, image_blobs, prompt, backend, options=options, req_timeout_cap=tcap)
     except httpx.ConnectError as e:
         logger.warning(f"draw edits httpx connect failed, fallback curl: {e}")
-        return await curl_post_edits(
-            image_blobs, prompt, backend, options=options, req_timeout_cap=tcap
-        )
+        return await curl_post_edits(image_blobs, prompt, backend, options=options, req_timeout_cap=tcap)
 
 
 MIN_GENERATED_IMAGE_BYTES = 64
@@ -536,9 +499,7 @@ def is_valid_generated_image(data: bytes) -> bool:
     return False
 
 
-def image_bytes_from_payload_field(
-    url: str | None, b64: str | None
-) -> tuple[str | None, bytes | None]:
+def image_bytes_from_payload_field(url: str | None, b64: str | None) -> tuple[str | None, bytes | None]:
     if isinstance(b64, str) and b64.strip():
         try:
             return None, base64.b64decode(strip_data_url_base64(b64))
@@ -562,16 +523,12 @@ def extract_image_from_generation_payload(
     if isinstance(items, list) and items:
         first = items[0]
         if isinstance(first, dict):
-            remote, raw = image_bytes_from_payload_field(
-                first.get("url"), first.get("b64_json")
-            )
+            remote, raw = image_bytes_from_payload_field(first.get("url"), first.get("b64_json"))
             if raw or remote:
                 return remote, raw
     inner = data.get("data")
     if isinstance(inner, dict):
-        remote, raw = image_bytes_from_payload_field(
-            inner.get("url"), inner.get("b64_json")
-        )
+        remote, raw = image_bytes_from_payload_field(inner.get("url"), inner.get("b64_json"))
         if raw or remote:
             return remote, raw
     return image_bytes_from_payload_field(
@@ -616,16 +573,10 @@ async def download_reference_images(
 ) -> list[bytes]:
     if not ref_urls:
         return []
-    ref_timeout = (
-        download_timeout
-        if download_timeout is not None
-        else image_gen_config.ref_download_timeout
-    )
+    ref_timeout = download_timeout if download_timeout is not None else image_gen_config.ref_download_timeout
 
     async def one(url: str) -> bytes | None:
-        return await bytes_from_image_reference(
-            client, url, download_timeout=ref_timeout
-        )
+        return await bytes_from_image_reference(client, url, download_timeout=ref_timeout)
 
     results = await asyncio.gather(*(one(u) for u in ref_urls))
     return [b for b in results if b]
@@ -735,13 +686,9 @@ async def reply_from_image_api_json(
                 f"draw generated image rejected: len={len(image_bytes)} head={image_bytes[:16]!r}",
             )
             return False
-        await matcher.send(
-            optional_message_at_user(at_user_id, MessageSegment.image(image_bytes))
-        )
+        await matcher.send(optional_message_at_user(at_user_id, MessageSegment.image(image_bytes)))
         if persist_draw:
-            schedule_persist_generated_draw(
-                image_bytes, persist_draw[0], persist_draw[1]
-            )
+            schedule_persist_generated_draw(image_bytes, persist_draw[0], persist_draw[1])
         return True
 
     if raw:
@@ -756,15 +703,11 @@ async def reply_from_image_api_json(
             if await send_validated_image(inline):
                 return True
             if finish_on_error:
-                await matcher.finish(
-                    optional_message_at_user(at_user_id, DRAW_VAGUE_REPLY)
-                )
+                await matcher.finish(optional_message_at_user(at_user_id, DRAW_VAGUE_REPLY))
             return False
         try:
             img_resp = await client.get(remote_url)
-            if img_resp.status_code == 200 and await send_validated_image(
-                img_resp.content
-            ):
+            if img_resp.status_code == 200 and await send_validated_image(img_resp.content):
                 return True
         except httpx.HTTPError:
             pass
@@ -772,9 +715,7 @@ async def reply_from_image_api_json(
         if finish_on_error:
             await matcher.finish(optional_message_at_user(at_user_id, DRAW_VAGUE_REPLY))
         return False
-    logger.warning(
-        f"draw response missing image url/b64 data_prefix={str(data)[:800]!r}"
-    )
+    logger.warning(f"draw response missing image url/b64 data_prefix={str(data)[:800]!r}")
     if finish_on_error:
         await matcher.finish(optional_message_at_user(at_user_id, DRAW_VAGUE_REPLY))
     return False
@@ -792,9 +733,7 @@ async def reply_generated_image_bytes(
             f"draw generated image rejected: len={len(image_bytes)} head={image_bytes[:16]!r}",
         )
         return False
-    await matcher.send(
-        optional_message_at_user(at_user_id, MessageSegment.image(image_bytes))
-    )
+    await matcher.send(optional_message_at_user(at_user_id, MessageSegment.image(image_bytes)))
     if persist_draw:
         schedule_persist_generated_draw(image_bytes, persist_draw[0], persist_draw[1])
     return True

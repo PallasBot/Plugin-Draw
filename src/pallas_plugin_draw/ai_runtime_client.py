@@ -7,7 +7,6 @@ import uuid
 from dataclasses import dataclass
 
 import httpx
-
 from pallas.api.platform import get_llm_config, llm_server_base_url
 
 from .replies import DRAW_VAGUE_REPLY
@@ -69,19 +68,13 @@ def gateway_payload_from_backends(backends: list | None) -> dict | None:
         api_key = str(getattr(item, "api_key", "") or "").strip()
         if not base_url or not api_key:
             continue
-        rows.append(
-            {
-                "base_url": base_url,
-                "api_key": api_key,
-                "model": str(getattr(item, "model", "") or "").strip(),
-                "omit_response_format": bool(
-                    getattr(item, "omit_response_format", False)
-                ),
-                "name": str(
-                    getattr(item, "name", "") or getattr(item, "label", "") or ""
-                ).strip(),
-            }
-        )
+        rows.append({
+            "base_url": base_url,
+            "api_key": api_key,
+            "model": str(getattr(item, "model", "") or "").strip(),
+            "omit_response_format": bool(getattr(item, "omit_response_format", False)),
+            "name": str(getattr(item, "name", "") or getattr(item, "label", "") or "").strip(),
+        })
     if not rows:
         return None
     return {"backends": rows}
@@ -143,12 +136,7 @@ def image_result_from_body(body: dict) -> AiImageResult:
         return AiImageResult(
             ok=False,
             reply_text=str(
-                (
-                    ((body.get("error") or {}) if isinstance(body, dict) else {}).get(
-                        "message"
-                    )
-                )
-                or DRAW_VAGUE_REPLY
+                (((body.get("error") or {}) if isinstance(body, dict) else {}).get("message")) or DRAW_VAGUE_REPLY
             ),
             provider_id=str(body.get("provider_id") or "") or None,
             backend_id=str(body.get("backend_id") or "") or None,
@@ -183,15 +171,11 @@ async def poll_image_task_result(
         try:
             response = await client.get(
                 media_task_status_endpoint(task_id),
-                timeout=httpx.Timeout(
-                    min(15.0, timeout_sec), connect=min(10.0, timeout_sec)
-                ),
+                timeout=httpx.Timeout(min(15.0, timeout_sec), connect=min(10.0, timeout_sec)),
             )
             response.raise_for_status()
         except httpx.HTTPError as exc:
-            return AiImageResult(
-                ok=False, reply_text=str(exc)[:200] or DRAW_VAGUE_REPLY
-            )
+            return AiImageResult(ok=False, reply_text=str(exc)[:200] or DRAW_VAGUE_REPLY)
 
         body = response.json()
         state = str(body.get("state") or "").strip().lower()
@@ -306,7 +290,5 @@ async def generate_image_via_ai_service(
         return result
     if result.reply_text.startswith("__task__:"):
         task_id = result.reply_text.removeprefix("__task__:")
-        return await poll_image_task_result(
-            client, task_id=task_id, timeout_sec=timeout_sec
-        )
+        return await poll_image_task_result(client, task_id=task_id, timeout_sec=timeout_sec)
     return result

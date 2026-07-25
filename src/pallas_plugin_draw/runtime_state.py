@@ -66,7 +66,6 @@ def record_ai_runtime_success() -> None:
 
 def record_ai_runtime_failure(reason: str) -> None:
     _ = reason
-    return
 
 
 def ai_runtime_circuit_status() -> AiRuntimeCircuitState:

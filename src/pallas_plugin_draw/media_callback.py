@@ -24,9 +24,7 @@ def on_draw_media_task_failed(task: dict[str, Any]) -> None:
     )
 
 
-def on_draw_media_task_success(
-    task: dict[str, Any], image_bytes: bytes, group_id: int
-) -> None:
+def on_draw_media_task_success(task: dict[str, Any], image_bytes: bytes, group_id: int) -> None:
     runtime_state = import_plugin_submodule("draw", "runtime_state")
     usage_store = import_plugin_submodule("draw", "draw_usage_store")
     stats_store = import_plugin_submodule("draw", "draw_stats_store")
@@ -35,9 +33,7 @@ def on_draw_media_task_success(
     runtime_state.record_ai_runtime_success()
     persist_user = task.get("user_id")
     if persist_user is not None:
-        image_api.schedule_persist_generated_draw(
-            image_bytes, int(group_id), int(persist_user)
-        )
+        image_api.schedule_persist_generated_draw(image_bytes, int(group_id), int(persist_user))
     if task.get("count_usage"):
         usage_user = task.get("user_id")
         if usage_user is not None:

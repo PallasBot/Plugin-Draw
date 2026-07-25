@@ -5,14 +5,13 @@ from dataclasses import dataclass
 from typing import Any, Self
 
 from nonebot import logger
-from pydantic import BaseModel, ConfigDict, Field
-
 from pallas.api.config import config_from_env, field_help, install_hot_reload_config
 from pallas.api.llm import (
     find_provider,
     resolve_provider_api_key,
     resolve_provider_base_url,
 )
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ImageBackendEntry(BaseModel):
@@ -41,9 +40,7 @@ class ImageBackendEntry(BaseModel):
     )
     api_key: str = Field(
         default="",
-        description=field_help(
-            "访问该备用服务用的密钥", "按服务商要求填写；无密钥可留空"
-        ),
+        description=field_help("访问该备用服务用的密钥", "按服务商要求填写；无密钥可留空"),
     )
     model: str = Field(
         default="",
@@ -135,9 +132,7 @@ class Config(BaseModel, extra="ignore"):
         default="",
         description="像素尺寸规格（如 1024x1024）；与 aspect_ratio 二选一，皆空则由接口默认。",
     )
-    pallas_image_quality: str = Field(
-        default="auto", description="生成质量档位，取值依上游 API 文档。"
-    )
+    pallas_image_quality: str = Field(default="auto", description="生成质量档位，取值依上游 API 文档。")
     pallas_image_response_format: str = Field(
         default="b64_json",
         description=(
@@ -250,9 +245,7 @@ class Config(BaseModel, extra="ignore"):
 
     @classmethod
     def from_env(cls) -> Self:
-        return migrate_legacy_gateway_config(
-            config_from_env(cls, parse_env_value=parse_draw_env_value)
-        )
+        return migrate_legacy_gateway_config(config_from_env(cls, parse_env_value=parse_draw_env_value))
 
 
 def normalize_image_base_url(url: str) -> str:
@@ -283,9 +276,7 @@ def resolve_gateway_credentials(
     if pid:
         row = find_provider(pid)
         if row is None:
-            logger.warning(
-                "draw 网关 {} 引用的 Provider 不存在或未启用: {}", label, pid
-            )
+            logger.warning("draw 网关 {} 引用的 Provider 不存在或未启用: {}", label, pid)
             return None
         url = normalize_image_base_url(resolve_provider_base_url(row))
         key = resolve_provider_api_key(row).strip()
@@ -312,9 +303,7 @@ def migrate_legacy_gateway_config(c: Config) -> Config:
     """旧部署仅写 api_backends、主站 base_url/api_key 为空时，将首条有效备选提升为主网关。"""
     if (c.pallas_image_provider_id or "").strip():
         return c
-    if (c.pallas_image_base_url or "").strip() and (
-        c.pallas_image_api_key or ""
-    ).strip():
+    if (c.pallas_image_base_url or "").strip() and (c.pallas_image_api_key or "").strip():
         return c
     backends = list(c.pallas_image_api_backends)
     if not backends:
@@ -352,11 +341,7 @@ def parse_draw_env_value(name: str, raw: str, ann: Any) -> Any:
             return [] if "list" in ann_text else {}
         parsed = json.loads(text)
         if name == "pallas_image_api_backends" and isinstance(parsed, list):
-            return [
-                ImageBackendEntry.model_validate(x)
-                for x in parsed
-                if isinstance(x, dict)
-            ]
+            return [ImageBackendEntry.model_validate(x) for x in parsed if isinstance(x, dict)]
         return parsed
     if "float" in ann_text and "list" not in ann_text:
         return float(text)

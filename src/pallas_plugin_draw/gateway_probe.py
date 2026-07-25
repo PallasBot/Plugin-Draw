@@ -9,7 +9,6 @@ import httpx
 from curl_cffi.requests import AsyncSession as CffiAsyncSession
 from curl_cffi.requests import RequestsError as CffiRequestsError
 from nonebot import logger
-
 from pallas.api.probe import ServiceProbeResult, format_probe_lines
 
 from .config import Config, ImageApiBackend, ImageGenSettings, get_draw_config
@@ -85,9 +84,7 @@ def image_gen_settings_from_draft(draft: dict[str, Any] | None) -> ImageGenSetti
         merged[key] = normalize_patch_value(Config.model_fields[key], value)
     from .config import migrate_legacy_gateway_config
 
-    return ImageGenSettings(
-        migrate_legacy_gateway_config(Config.model_validate(merged))
-    )
+    return ImageGenSettings(migrate_legacy_gateway_config(Config.model_validate(merged)))
 
 
 def probe_timeout_sec(settings: ImageGenSettings) -> float:
@@ -118,9 +115,7 @@ async def cffi_probe_get(
     if not impersonate:
         raise ValueError("tls_impersonate 为空")
     async with CffiAsyncSession() as session:
-        r = await session.get(
-            url, headers=headers, impersonate=impersonate, timeout=timeout_sec
-        )
+        r = await session.get(url, headers=headers, impersonate=impersonate, timeout=timeout_sec)
         return r.status_code, (r.text or "")[:400]
 
 

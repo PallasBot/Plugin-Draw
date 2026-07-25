@@ -18,9 +18,7 @@ class DrawQuotaDecision:
 
 
 def _looks_like_afdian_api(mod: ModuleType) -> bool:
-    return all(
-        hasattr(mod, name) for name in ("is_ready", "debit_one", "credit_balance")
-    )
+    return all(hasattr(mod, name) for name in ("is_ready", "debit_one", "credit_balance"))
 
 
 def _load_afdian_api() -> ModuleType | None:
@@ -81,11 +79,7 @@ def resolve_draw_quota(
     billing_user = int(api.resolve_billing_user_id(group_id, user_id))
     shared_pool = bool(api.group_billing_is_shared(group_id, user_id))
     ever_had = bool(api.ever_had_credits(billing_user))
-    owner = (
-        api.group_billing_owner(group_id)
-        if hasattr(api, "group_billing_owner")
-        else None
-    )
+    owner = api.group_billing_owner(group_id) if hasattr(api, "group_billing_owner") else None
     has_owner = owner is not None
 
     if int(api.credit_balance(billing_user)) < 1:
@@ -95,9 +89,7 @@ def resolve_draw_quota(
             ever_had=ever_had,
             has_owner=has_owner,
         )
-        return DrawQuotaDecision(
-            count_usage=True, paid_credit=False, block_message=str(msg)
-        )
+        return DrawQuotaDecision(count_usage=True, paid_credit=False, block_message=str(msg))
     return DrawQuotaDecision(count_usage=True, paid_credit=True)
 
 

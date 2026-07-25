@@ -7,7 +7,6 @@ import time
 from pathlib import Path
 
 from nonebot import logger
-
 from pallas.api.paths import plugin_data_dir
 
 _ARCHIVE_SUBDIR = "draw_archive"
@@ -69,9 +68,7 @@ def _cleanup_index_sync(entries: list[dict]) -> list[dict]:
             try:
                 fp.unlink(missing_ok=True)
             except OSError as ex:
-                logger.debug(
-                    f"draw draw_archive unlink expired failed path={fp} err={ex}"
-                )
+                logger.debug(f"draw draw_archive unlink expired failed path={fp} err={ex}")
             continue
         alive.append(e)
 
@@ -95,9 +92,7 @@ def _persist_sync(data: bytes, group_id: int, user_id: int) -> None:
     fp = d / name
     fp.write_bytes(data)
     entries = _load_index_sync()
-    entries.append(
-        {"path": str(fp.resolve()), "size": len(data), "ts": int(time.time())}
-    )
+    entries.append({"path": str(fp.resolve()), "size": len(data), "ts": int(time.time())})
     entries = _cleanup_index_sync(entries)
     _save_index_sync(entries)
 
