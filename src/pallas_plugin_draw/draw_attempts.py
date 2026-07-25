@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 import httpx
 from nonebot import logger
@@ -25,16 +26,19 @@ from .draw_stats_store import (
     resolve_draw_stats_cost,
 )
 from .draw_usage_store import bump_pallas_draw_usage
+from .afdian_bridge import apply_usage_after_success
 from .image_api import (
     CffiRequestsError,
     image_api_body_issue_label,
-    message_at_user,
+    optional_message_at_user,
     reply_from_image_api_json,
     request_timeout_for_backend_attempt,
 )
 from .image_request_options import ImageGenRequestOptions, capped_param_attempts
 from .replies import DRAW_VAGUE_REPLY
 from .runtime_state import image_gen_semaphore
+
+_AT_USER_UNSET: Any = object()
 
 
 class DrawDeadline:
@@ -86,6 +90,13 @@ def format_transport_error(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {exc!r}"
 
 
+def resolve_reply_at_user_id(user_id: int, at_user_id: Any) -> int | None:
+    """未显式传入时默认 @ user_id；显式 None 表示不 @（如私聊）。"""
+    if at_user_id is _AT_USER_UNSET:
+        return user_id
+    return at_user_id
+
+
 PostRequestFn = Callable[
     [ImageApiBackend, ImageGenRequestOptions, float],
     Awaitable[tuple[int, str]],
@@ -109,8 +120,11 @@ async def run_backend_param_attempts(
     last_body_holder: list[str],
     last_status_holder: list[int],
     edits_abort_holder: list[bool] | None = None,
+    paid_afdian: bool = False,
+    at_user_id: int | None = _AT_USER_UNSET,
 ) -> bool:
     """按 backend × 参数组合请求；成功发图返回 True。"""
+    reply_at = resolve_reply_at_user_id(user_id, at_user_id)
     for idx, backend in enumerate(backends):
         if deadline.expired():
             raise DrawTotalTimeoutError
@@ -189,11 +203,17 @@ async def run_backend_param_attempts(
                     matcher,
                     http_client,
                     body_text,
-                    at_user_id=user_id,
+                    at_user_id=reply_at,
                     persist_draw=(usage_key[0], usage_key[1]),
                     finish_on_error=not still_retrying,
                 ):
-                    bump_pallas_draw_usage(usage_key, count_usage)
+                    await apply_usage_after_success(
+                        usage_key=usage_key,
+                        user_id=user_id,
+                        count_usage=count_usage,
+                        paid_credit=paid_afdian,
+                        bump_free=bump_pallas_draw_usage,
+                    )
                     cost_amount, cost_currency = resolve_draw_stats_cost(
                         backend=backend,
                         images=1,
@@ -219,8 +239,8 @@ async def run_backend_param_attempts(
                 if issue == "upstream_error":
                     if upstream_error_visible_to_user(body_text):
                         await matcher.finish(
-                            message_at_user(
-                                user_id,
+                            optional_message_at_user(
+                                reply_at,
                                 user_failure_reply(
                                     body_text, vague_reply=DRAW_VAGUE_REPLY
                                 ),
@@ -287,10 +307,22 @@ async def run_backend_param_attempts(
     return False
 
 
-async def finish_draw_failure(matcher, user_id: int, last_body: str) -> None:
+async def finish_draw_failure(
+    matcher,
+    user_id: int,
+    last_body: str,
+    *,
+    at_user_id: int | None = _AT_USER_UNSET,
+    last_status: int | None = None,
+) -> None:
     record_draw_stats(ok=False, gateway="manual", provider="exhausted", source="plugin")
+    reply_at = resolve_reply_at_user_id(user_id, at_user_id)
+    # last_status：与本地扩展签名对齐；社区版失败文案不暴露 HTTP 细节。
+    if last_status not in (None, 0, 200):
+        logger.info(f"draw exhausted last_status={last_status}")
     await matcher.finish(
-        message_at_user(
-            user_id, user_failure_reply(last_body, vague_reply=DRAW_VAGUE_REPLY)
+        optional_message_at_user(
+            reply_at,
+            user_failure_reply(last_body, vague_reply=DRAW_VAGUE_REPLY),
         )
     )

@@ -25,6 +25,7 @@ from pallas.api.platform import (
 from .config import active_image_gen_settings, image_gen_config
 from .draw_attempts import DrawDeadline, DrawTotalTimeoutError
 from .draw_usage_store import pallas_draw_usage_today
+from .afdian_bridge import resolve_draw_quota
 from .image_api import CffiRequestsError, message_at_user
 from .plugin_gateway import run_plugin_gateway_draw
 from .replies import DRAW_VAGUE_REPLY
@@ -241,10 +242,17 @@ async def pallas_draw_handle(
     if await SUPERUSER(bot, event):
         count_usage = False
     limit_n = image_gen_config.draw_per_user_limit
-    if count_usage and pallas_draw_usage_today(usage_key) >= limit_n:
-        await pallas_draw.finish(
-            message_at_user(user_id, f"你在本群今日的画画次数已达上限（{limit_n}）。")
-        )
+    decision = resolve_draw_quota(
+        count_usage=count_usage,
+        limit_n=limit_n,
+        usage_today=pallas_draw_usage_today(usage_key),
+        group_id=group_id,
+        user_id=user_id,
+    )
+    if decision.block_message:
+        await pallas_draw.finish(message_at_user(user_id, decision.block_message))
+    count_usage = decision.count_usage
+    paid_credit = decision.paid_credit
 
     text = args.extract_plain_text().strip()
     ref_urls = extract_image_urls_from_messages(
@@ -320,6 +328,7 @@ async def pallas_draw_handle(
             int(event.self_id),
             usage_key,
             count_usage,
+            paid_credit,
             user_id,
             text,
             ref_urls,
@@ -333,6 +342,7 @@ async def run_pallas_draw_queued(
     bot_id: int,
     usage_key: tuple[int, int],
     count_usage: bool,
+    paid_credit: bool,
     user_id: int,
     text: str,
     ref_urls: list[str],
@@ -342,15 +352,25 @@ async def run_pallas_draw_queued(
     try:
         async with get_pallas_draw_user_lock(group_id, user_id):
             limit_n = image_gen_config.draw_per_user_limit
-            if count_usage and pallas_draw_usage_today(usage_key) >= limit_n:
-                await matcher.send(
-                    message_at_user(
-                        user_id, f"你在本群今日的画画次数已达上限（{limit_n}）。"
-                    )
-                )
+            decision = resolve_draw_quota(
+                count_usage=count_usage or paid_credit,
+                limit_n=limit_n,
+                usage_today=pallas_draw_usage_today(usage_key),
+                group_id=group_id,
+                user_id=user_id,
+            )
+            if decision.block_message:
+                await matcher.send(message_at_user(user_id, decision.block_message))
                 return
             image_sent = await pallas_draw_execute(
-                matcher, bot_id, usage_key, count_usage, user_id, text, ref_urls
+                matcher,
+                bot_id,
+                usage_key,
+                decision.count_usage,
+                decision.paid_credit,
+                user_id,
+                text,
+                ref_urls,
             )
     except FinishedException:
         raise
@@ -383,6 +403,7 @@ async def pallas_draw_execute(
     bot_id: int,
     usage_key: tuple[int, int],
     count_usage: bool,
+    paid_credit: bool,
     user_id: int,
     text: str,
     ref_urls: list[str],
@@ -410,6 +431,7 @@ async def pallas_draw_execute(
                 user_id=user_id,
                 usage_key=usage_key,
                 count_usage=count_usage,
+                paid_credit=paid_credit,
                 text=text,
                 ref_urls=ref_urls,
                 gen_prompt=gen_prompt,

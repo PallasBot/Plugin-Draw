@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+## [4.1.2] - 2026-07-25
+
+- feat(draw): 可选软接入社区插件 `afdian`；未安装/未启用时仅免费日限，拒画文案不含付费引导
+- feat(draw): 接入后免费用尽可扣额外额度；成功后互斥扣次
+- fix(draw): `run_backend_param_attempts` / `finish_draw_failure` 接受 keyword-only `paid_afdian`、`at_user_id`
+
 ## [4.1.1] - 2026-07-24
 
 - feat(stats): 运维向日统计（成功/失败、按网关/Provider/模型）与可选费用累计

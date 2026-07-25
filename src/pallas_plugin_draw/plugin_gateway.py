@@ -47,6 +47,7 @@ async def run_plugin_gateway_draw(
     user_id: int,
     usage_key: tuple[int, int],
     count_usage: bool,
+    paid_credit: bool = False,
     text: str,
     ref_urls: list[str],
     gen_prompt: str,
@@ -122,6 +123,7 @@ async def run_plugin_gateway_draw(
                 last_body_holder=last_body,
                 last_status_holder=last_status,
                 edits_abort_holder=edits_abort,
+                paid_afdian=paid_credit,
             ):
                 return True
             if edits_abort[0] or http_status_edits_unsupported(last_status[0]):
@@ -174,6 +176,7 @@ async def run_plugin_gateway_draw(
         post_request=post_generations,
         last_body_holder=last_body,
         last_status_holder=last_status,
+        paid_afdian=paid_credit,
     ):
         return True
 
