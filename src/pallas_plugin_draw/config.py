@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Self
 
 from nonebot import logger
-from pallas.api.config import config_from_env, field_help, install_hot_reload_config
+from pallas.api.config import config_from_env, field_help, install_hot_reload_config, ui_provider_gateway
 from pallas.api.llm import (
     find_provider,
     resolve_provider_api_key,
@@ -115,6 +115,24 @@ class Config(BaseModel, extra="ignore"):
             "主线路不可用时的备用画图服务列表",
             "JSON 数组，每项可含 provider_id，或至少含 base_url 与 api_key；主配置失败时按顺序尝试",
             "详细列表可在「插件 → 牛牛画画」页编辑",
+        ),
+        json_schema_extra=ui_provider_gateway(
+            mode="split",
+            allow_manual=True,
+            capability="image",
+            backends="pallas_image_api_backends",
+            primary={
+                "provider_id": "pallas_image_provider_id",
+                "name": "pallas_image_primary_name",
+                "base_url": "pallas_image_base_url",
+                "api_key": "pallas_image_api_key",
+                "model": "pallas_image_model",
+                "cost_per_image": "pallas_image_cost_per_image",
+            },
+            currency_field="pallas_image_stats_cost_currency",
+            title="画图网关",
+            label="画图网关（主线/备线）",
+            group="网关",
         ),
     )
     pallas_image_model: str = Field(
