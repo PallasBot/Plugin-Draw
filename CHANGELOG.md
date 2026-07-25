@@ -5,10 +5,9 @@
 
 ## [Unreleased]
 
+## [4.1.4] - 2026-07-25
 
-## [$new] - $TODAY
-
-- chore(ci): 对齐 ruff 0.16 与主仓 ruff.toml，修复 lint
+- feat: PluginMetadata.extra 增加 `help_tag`（帮助图分组）
 
 ## [4.1.2] - 2026-07-25
 
