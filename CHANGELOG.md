@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+## [4.1.5] - 2026-07-25
+
+- feat(config): `pallas_image_api_backends` 声明 `ui_provider_gateway`（split 主备线路面板）
+
 ## [4.1.4] - 2026-07-25
 
 - feat: PluginMetadata.extra 增加 `help_tag`（帮助图分组）

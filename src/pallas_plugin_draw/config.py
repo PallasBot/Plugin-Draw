@@ -5,13 +5,20 @@ from dataclasses import dataclass
 from typing import Any, Self
 
 from nonebot import logger
-from pallas.api.config import config_from_env, field_help, install_hot_reload_config, ui_provider_gateway
+from pallas.api.config import config_from_env, field_help, install_hot_reload_config
 from pallas.api.llm import (
     find_provider,
     resolve_provider_api_key,
     resolve_provider_base_url,
 )
 from pydantic import BaseModel, ConfigDict, Field
+
+try:
+    from pallas.api.config import ui_provider_gateway
+except ImportError:  # 旧版 Bot 尚无该 helper 时仍可加载插件
+
+    def ui_provider_gateway(**_kwargs: Any) -> dict[str, Any]:
+        return {}
 
 
 class ImageBackendEntry(BaseModel):
