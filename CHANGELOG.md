@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+
+## [$new] - $TODAY
+
+- chore(ci): 对齐 ruff 0.16 与主仓 ruff.toml，修复 lint
+
 ## [4.1.2] - 2026-07-25
 
 - feat(draw): 可选软接入社区插件 `afdian`；未安装/未启用时仅免费日限，拒画文案不含付费引导
