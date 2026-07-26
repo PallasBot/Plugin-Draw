@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+## [4.1.8] - 2026-07-26
+
+- feat(llm_tools): 为口令工具补充口语 hints
+
 ## [4.1.7] - 2026-07-26
 
 - fix: 日用量 storage 延后到启动后再读，避免 import 阶段 `undeclared plugin_storage key`
