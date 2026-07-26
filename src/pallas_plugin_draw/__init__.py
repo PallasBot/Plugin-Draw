@@ -49,6 +49,7 @@ __plugin_meta__ = PluginMetadata(
                     "required": ["prompt"],
                 },
                 command_template="牛牛画画 {prompt}",
+                hints=["画画", "画一张", "画个", "生图", "画图", "来张图", "绘制"],
             ),
         ],
         "plugin_storage": plugin_storage_list(
