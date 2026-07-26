@@ -133,10 +133,24 @@ def _load_from_storage() -> dict[tuple[int, int], tuple[date, int]]:
         return _usage_map_from_payload(raw) if isinstance(raw, dict) else {}
 
 
+_loaded = False
+
+
 def _load() -> None:
-    global _pallas_draw_usage
+    global _pallas_draw_usage, _loaded
     _pallas_draw_usage = _load_from_storage()
     _prune_stale_memory()
+    _loaded = True
+
+
+def ensure_draw_usage_loaded() -> None:
+    """插件元数据注册后再读 storage，避免 import 阶段 undeclared 告警。"""
+    if _loaded:
+        return
+    with _lock:
+        if _loaded:
+            return
+        _load()
 
 
 def _prune_stale_memory() -> None:
@@ -181,6 +195,7 @@ def flush_pending_draw_usage_sync() -> None:
 
 
 def pallas_draw_usage_today(usage_key: tuple[int, int]) -> int:
+    ensure_draw_usage_loaded()
     with _lock:
         today = date.today()
         prev = _pallas_draw_usage.get(usage_key)
@@ -193,6 +208,7 @@ def bump_pallas_draw_usage(usage_key: tuple[int, int], count_usage: bool) -> Non
     global _usage_dirty
     if not count_usage:
         return
+    ensure_draw_usage_loaded()
     group_id, user_id = usage_key
     with _lock:
         today = date.today()
@@ -210,5 +226,4 @@ def bump_pallas_draw_usage(usage_key: tuple[int, int], count_usage: bool) -> Non
     )
 
 
-_load()
 atexit.register(flush_pending_draw_usage_sync)

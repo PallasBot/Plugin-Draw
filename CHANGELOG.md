@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+## [4.1.7] - 2026-07-26
+
+- fix: 日用量 storage 延后到启动后再读，避免 import 阶段 `undeclared plugin_storage key`
+
 ## [4.1.6] - 2026-07-26
 
 - feat(config): WebUI 配置字段增加 ui_group 分组与 ui_order 排序

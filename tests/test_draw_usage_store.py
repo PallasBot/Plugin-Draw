@@ -19,12 +19,24 @@ class _FakeTimer:
         self.cancelled = True
 
 
+def test_usage_load_is_lazy(monkeypatch):
+    calls: list[str] = []
+    monkeypatch.setattr(mod, "_loaded", False)
+    monkeypatch.setattr(mod, "_pallas_draw_usage", {})
+    monkeypatch.setattr(mod, "_load_from_storage", lambda: calls.append("load") or {})
+
+    assert mod.pallas_draw_usage_today((1, 2)) == 0
+    assert calls == ["load"]
+    assert mod._loaded is True
+
+
 def test_bump_usage_does_not_persist_immediately(monkeypatch):
     calls: list[str] = []
 
     monkeypatch.setattr(mod, "_pallas_draw_usage", {})
     monkeypatch.setattr(mod, "_flush_timer", None)
     monkeypatch.setattr(mod, "_usage_dirty", False)
+    monkeypatch.setattr(mod, "_loaded", True)
     monkeypatch.setattr(mod, "_persist", lambda: calls.append("persist"))
     monkeypatch.setattr(mod.threading, "Timer", _FakeTimer)
 
@@ -42,6 +54,7 @@ def test_flush_pending_usage_persists_once(monkeypatch):
     monkeypatch.setattr(mod, "_pallas_draw_usage", {(1, 2): (date.today(), 1)})
     monkeypatch.setattr(mod, "_flush_timer", None)
     monkeypatch.setattr(mod, "_usage_dirty", True)
+    monkeypatch.setattr(mod, "_loaded", True)
     monkeypatch.setattr(mod, "_persist", lambda: calls.append("persist"))
 
     mod.flush_pending_draw_usage_sync()
