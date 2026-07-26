@@ -74,10 +74,15 @@ class ImageBackendEntry(BaseModel):
     )
 
 
+def _ui(group: str, order: int, **extra: object) -> dict[str, object]:
+    return {"ui_group": group, "ui_order": order, **extra}
+
+
 class Config(BaseModel, extra="ignore"):
     pallas_image_min_priority: int = Field(
         default=5,
         description="「牛牛画画」等指令的插件优先级下限；数值越大越晚处理，便于被其他插件拦截。",
+        json_schema_extra=_ui("限流与权限", 10),
     )
     pallas_image_provider_id: str = Field(
         default="",
@@ -85,6 +90,7 @@ class Config(BaseModel, extra="ignore"):
             "主线路沿用的 LLM Provider（可选）",
             "填写后主线路 base_url / api_key 从 AI · Provider 读取，无需再抄密钥；须支持 images API",
         ),
+        json_schema_extra=_ui("网关", 10),
     )
     pallas_image_base_url: str = Field(
         default="",
@@ -93,6 +99,7 @@ class Config(BaseModel, extra="ignore"):
             "须带 http:// 或 https://，建议以 / 结尾；不要写成已含 /v1 的地址以免路径重复",
             "通用配置「服务网关」页可一键检测是否连通",
         ),
+        json_schema_extra=_ui("网关", 30),
     )
     pallas_image_api_key: str = Field(
         default="",
@@ -100,6 +107,7 @@ class Config(BaseModel, extra="ignore"):
             "主画图服务的访问密钥",
             "按服务商（如 OpenAI 兼容网关）要求填写",
         ),
+        json_schema_extra=_ui("网关", 40),
     )
     pallas_image_primary_name: str = Field(
         default="",
@@ -107,6 +115,7 @@ class Config(BaseModel, extra="ignore"):
             "主线路在界面里显示的名称",
             "留空显示为「主网关」",
         ),
+        json_schema_extra=_ui("网关", 20),
     )
     pallas_image_cost_per_image: float = Field(
         default=0.0,
@@ -115,6 +124,7 @@ class Config(BaseModel, extra="ignore"):
             "主线路单张成功费用（可选）",
             "用于 AI 统计页累计；0 表示不计费。备线在各自网关条目里单独填写",
         ),
+        json_schema_extra=_ui("网关", 50),
     )
     pallas_image_api_backends: list[ImageBackendEntry] = Field(
         default_factory=list,
@@ -148,82 +158,101 @@ class Config(BaseModel, extra="ignore"):
             "默认使用的画图模型名称",
             "须与服务商支持的模型名一致，例如 gpt-image-2",
         ),
+        json_schema_extra=_ui("生成参数", 10),
     )
     pallas_image_aspect_ratio: str = Field(
         default="",
         description="画幅比例，如 21:9、16:9、1:1；与 size 二选一填写，皆空则由接口默认。",
+        json_schema_extra=_ui("生成参数", 20),
     )
     pallas_image_size: str = Field(
         default="",
         description="像素尺寸规格（如 1024x1024）；与 aspect_ratio 二选一，皆空则由接口默认。",
+        json_schema_extra=_ui("生成参数", 30),
     )
-    pallas_image_quality: str = Field(default="auto", description="生成质量档位，取值依上游 API 文档。")
+    pallas_image_quality: str = Field(
+        default="auto", description="生成质量档位，取值依上游 API 文档。", json_schema_extra=_ui("生成参数", 40)
+    )
     pallas_image_response_format: str = Field(
         default="b64_json",
         description=(
             "主网关及未设 omit_response_format 的备选所请求的返回格式（如 b64_json、url）。"
             "若某备选上游无 response_format 字段，请在该备选网关条目勾选 omit_response_format。"
         ),
+        json_schema_extra=_ui("生成参数", 50),
     )
     pallas_image_use_edits_for_reference_images: bool = Field(
         default=True,
         description="带参考图时是否走 edits 接口而非纯文生图。",
+        json_schema_extra=_ui("生成参数", 60),
     )
     pallas_image_merge_reference_urls_into_prompt: bool = Field(
         default=False,
         description="是否把参考图 URL 合并写进提示词（部分网关需要）。",
+        json_schema_extra=_ui("生成参数", 70),
     )
     pallas_image_default_edit_prompt: str = Field(
         default="按参考图调整",
         description="编辑/参考图模式未给出文案时使用的默认提示词。",
+        json_schema_extra=_ui("生成参数", 80),
     )
     pallas_image_request_timeout: float = Field(
         default=180.0,
         ge=10.0,
         le=600.0,
         description="单次图像请求超时时间（秒）。",
+        json_schema_extra=_ui("超时与重试", 10),
     )
     pallas_image_max_concurrency: int = Field(
         default=2,
         ge=1,
         le=32,
         description="全局并发生成请求上限，防止打爆上游或本机。",
+        json_schema_extra=_ui("限流与权限", 70),
     )
     pallas_image_http_transport: str = Field(
         default="auto",
         description="HTTP 客户端实现：auto / httpx / curl 等，参见插件实现说明。",
+        json_schema_extra=_ui("HTTP 传输", 10),
     )
     pallas_image_tls_impersonate: str = Field(
         default="chrome124",
         description="使用 curl 模拟 TLS 指纹时的浏览器标识（如 chrome124）。",
+        json_schema_extra=_ui("HTTP 传输", 20),
     )
     pallas_image_http_user_agent: str = Field(
         default="curl/8.5.0",
         description="出站请求 User-Agent，部分 CDN 会校验。",
+        json_schema_extra=_ui("HTTP 传输", 30),
     )
     pallas_image_draw_group_whitelist: list[int] = Field(
         default_factory=list,
         description="非空时仅允许这些群号使用画画指令；空表示不按群白名单限制。",
+        json_schema_extra=_ui("限流与权限", 20),
     )
     pallas_image_draw_per_user_limit: int = Field(
         default=0,
         ge=0,
         le=1_000_000,
         description="每人每群每日可调用画画次数上限；0 为不限制（按进程自然日）。",
+        json_schema_extra=_ui("限流与权限", 30),
     )
     pallas_image_draw_unlimited_group_ids: list[int] = Field(
         default_factory=list,
         description="不受每人每日次数限制的群号列表。",
+        json_schema_extra=_ui("限流与权限", 40),
     )
     pallas_image_draw_unlimited_user_ids: list[int] = Field(
         default_factory=list,
         description="不受每人每日次数限制的 QQ 号列表。",
+        json_schema_extra=_ui("限流与权限", 50),
     )
     pallas_image_draw_command_cooldown: int = Field(
         default=3,
         ge=0,
         le=3600,
         description="同一群两次「牛牛画画」的最短间隔（秒）；在真正开始调用上游时扣减，非发「欢呼吧」时。",
+        json_schema_extra=_ui("限流与权限", 60),
     )
     # 画画重试与耗时：快档优先，慢档可关见下项
     pallas_image_max_param_attempts: int = Field(
@@ -231,34 +260,40 @@ class Config(BaseModel, extra="ignore"):
         ge=0,
         le=32,
         description="每个 API backend 内最多尝试的参数组合数（快档+慢档合计）；0 不限制。",
+        json_schema_extra=_ui("超时与重试", 20),
     )
     pallas_image_slow_param_fallback: bool = Field(
         default=True,
         description="快档失败后是否继续慢档（遍历常见 size/quality 等）；关闭可显著减少失败耗时。",
+        json_schema_extra=_ui("超时与重试", 30),
     )
     pallas_image_draw_total_timeout: float = Field(
         default=480.0,
         gt=30.0,
         le=1800.0,
         description="单次画画从进入队列到结束的上限（秒），含排队、下载参考图与多轮重试；偏慢上游宜加大。",
+        json_schema_extra=_ui("超时与重试", 40),
     )
     pallas_image_backend_attempt_timeout: float = Field(
         default=90.0,
         ge=0.0,
         le=600.0,
         description="备用网关单次 POST 硬上限（秒）；主网关不受此项限制。0 表示备用仅用均分不设硬顶。",
+        json_schema_extra=_ui("超时与重试", 50),
     )
     pallas_image_ref_download_timeout: float = Field(
         default=30.0,
         gt=1.0,
         le=120.0,
         description="并行下载每张参考图的单张超时（秒）。",
+        json_schema_extra=_ui("超时与重试", 60),
     )
     pallas_image_draw_max_pending: int = Field(
         default=8,
         ge=0,
         le=64,
         description="进程内同时进行中的画画任务上限（含已回复「欢呼吧」尚未结束的）；0 不限制。",
+        json_schema_extra=_ui("限流与权限", 80),
     )
     pallas_image_stats_cost_currency: str = Field(
         default="",
@@ -266,6 +301,7 @@ class Config(BaseModel, extra="ignore"):
             "画画用量统计的费用币种（可选）",
             "如 CNY、USD；各网关单价共用此币种。留空则有费用时也不强制标注币种",
         ),
+        json_schema_extra=_ui("网关", 70),
     )
 
     @classmethod

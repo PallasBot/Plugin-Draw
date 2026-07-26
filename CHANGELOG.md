@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+## [4.1.6] - 2026-07-26
+
+- feat(config): WebUI 配置字段增加 ui_group 分组与 ui_order 排序
+
+
 ## [4.1.5] - 2026-07-25
 
 - feat(config): `pallas_image_api_backends` 声明 `ui_provider_gateway`（split 主备线路面板）
