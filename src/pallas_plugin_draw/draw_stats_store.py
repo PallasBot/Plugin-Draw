@@ -122,6 +122,67 @@ def _apply_raw_locked(raw: dict[str, Any]) -> None:
     _copy_breakdown(_by_model, raw.get("by_model"))
 
 
+def _snapshot_signature(raw: dict[str, Any]) -> tuple[Any, ...]:
+    by_provider = raw.get("by_provider") if isinstance(raw.get("by_provider"), dict) else {}
+    return (
+        int(raw.get("ok_count") or 0),
+        int(raw.get("fail_count") or 0),
+        int(raw.get("image_count") or 0),
+        round(float(raw.get("cost_total") or 0), 6),
+        tuple(
+            sorted(
+                (
+                    str(k),
+                    int((v or {}).get("ok_count") or 0) if isinstance(v, dict) else 0,
+                    int((v or {}).get("fail_count") or 0) if isinstance(v, dict) else 0,
+                    int((v or {}).get("image_count") or 0) if isinstance(v, dict) else 0,
+                    round(float((v or {}).get("cost_total") or 0), 6) if isinstance(v, dict) else 0.0,
+                )
+                for k, v in by_provider.items()
+            )
+        ),
+    )
+
+
+def _clear_counters_locked() -> None:
+    global _ok_count, _fail_count, _image_count, _cost_total, _cost_currency
+    _ok_count = 0
+    _fail_count = 0
+    _image_count = 0
+    _cost_total = 0.0
+    _cost_currency = ""
+    _by_gateway.clear()
+    _by_provider.clear()
+    _by_model.clear()
+
+
+def _scrub_worker_shared_clone_locked() -> None:
+    """Worker 内存若与 hub 共享日文件完全一致，视为误灌共享总量，清零避免 cluster 重复加总。"""
+    try:
+        from pallas.product.llm.shard_metric_hydrate import allow_shared_stats_file_hydrate
+
+        if allow_shared_stats_file_hydrate():
+            return
+    except Exception:
+        return
+    if not (_ok_count or _fail_count or _image_count or _cost_total):
+        return
+    path = stats_file_path()
+    if not path.is_file():
+        return
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(raw, dict):
+        return
+    today = str(_day_key or today_key()).strip()[:10]
+    if str(raw.get("day_key") or "").strip()[:10] != today:
+        return
+    if _snapshot_signature(_snapshot_locked()) == _snapshot_signature(raw):
+        _clear_counters_locked()
+
+
 def _salvage_day_to_daily(day: str, raw: dict[str, Any]) -> None:
     try:
         from pallas.product.llm.llm_daily_stats_store import write_day_side
@@ -158,11 +219,31 @@ def _hydrate_from_disk_locked() -> None:
     today = str(_day_key or today_key()).strip()[:10]
 
     try:
-        from pallas.product.llm.shard_metric_hydrate import load_worker_day_metric
+        from pallas.product.llm.shard_metric_hydrate import (
+            allow_shared_stats_file_hydrate,
+            load_worker_day_metric,
+        )
 
         worker_raw = load_worker_day_metric(metric_key="llm_draw", day_key=today)
         if isinstance(worker_raw, dict):
-            _apply_raw_locked(worker_raw)
+            # 与共享日文件完全一致时多半是旧误灌，丢掉以免写回 worker stats
+            shared_clone = False
+            path = stats_file_path()
+            if path.is_file():
+                try:
+                    shared = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    shared = None
+                if (
+                    isinstance(shared, dict)
+                    and str(shared.get("day_key") or "").strip()[:10] == today
+                    and _snapshot_signature(worker_raw) == _snapshot_signature(shared)
+                ):
+                    shared_clone = True
+            if not shared_clone:
+                _apply_raw_locked(worker_raw)
+            return
+        if not allow_shared_stats_file_hydrate():
             return
     except Exception:
         pass
@@ -471,9 +552,15 @@ def merge_draw_snapshots(rows: list[dict[str, Any]]) -> dict[str, Any]:
     by_model: dict[str, dict[str, float | int]] = {}
     day_key = ""
     updated_at = 0.0
+    seen: set[tuple[Any, ...]] = set()
     for row in rows:
         if not isinstance(row, dict):
             continue
+        # 防御：worker 误灌共享落盘时，多份完全相同的快照会把总量乘上分片数
+        sig = _snapshot_signature(row)
+        if sig in seen:
+            continue
+        seen.add(sig)
         day_key = str(row.get("day_key") or day_key)
         try:
             updated_at = max(updated_at, float(row.get("updated_at") or 0))
@@ -508,6 +595,7 @@ def draw_stats_snapshot(*, include_persisted: bool = True) -> dict[str, Any]:
         _rollover_if_needed_locked()
         if include_persisted:
             _hydrate_from_disk_locked()
+        _scrub_worker_shared_clone_locked()
         return _snapshot_locked()
 
 

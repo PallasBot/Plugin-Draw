@@ -108,6 +108,123 @@ def test_merge_draw_snapshots_sums_totals_and_buckets() -> None:
     assert merged["by_model"]["m1"]["image_count"] == 5
 
 
+def test_merge_draw_snapshots_dedupes_identical_rows() -> None:
+    row = {
+        "day_key": "2026-07-27",
+        "ok_count": 48,
+        "fail_count": 5,
+        "image_count": 48,
+        "cost_total": 0.98,
+        "by_gateway": {"provider": {"ok_count": 48, "fail_count": 0, "image_count": 48, "cost_total": 0.98}},
+        "by_provider": {"AK": {"ok_count": 48, "fail_count": 0, "image_count": 48, "cost_total": 0.98}},
+        "by_model": {"gpt-image-2": {"ok_count": 48, "fail_count": 0, "image_count": 48, "cost_total": 0.98}},
+    }
+    merged = merge_draw_snapshots([row, dict(row), dict(row)])
+    assert merged["ok_count"] == 48
+    assert merged["fail_count"] == 5
+    assert merged["image_count"] == 48
+    assert abs(merged["cost_total"] - 0.98) < 1e-9
+
+
+def test_worker_skips_shared_file_hydrate(tmp_path, monkeypatch) -> None:
+    reset_draw_stats_for_tests()
+    path = tmp_path / "draw_stats_daily.json"
+    path.write_text(
+        json.dumps({
+            "v": 1,
+            "day_key": "2026-07-27",
+            "ok_count": 48,
+            "fail_count": 5,
+            "image_count": 48,
+            "cost_total": 0.98,
+            "by_gateway": {},
+            "by_provider": {"AK": {"ok_count": 48, "fail_count": 0, "image_count": 48, "cost_total": 0.98}},
+            "by_model": {},
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "pallas_plugin_draw.draw_stats_store.stats_file_path",
+        lambda: path,
+    )
+    monkeypatch.setattr(
+        "pallas_plugin_draw.draw_stats_store.today_key",
+        lambda: "2026-07-27",
+    )
+    monkeypatch.setattr("pallas.core.platform.shard.context.sharding_active", lambda: True)
+    monkeypatch.setattr("pallas.core.platform.shard.context.is_worker", lambda: True)
+    monkeypatch.setattr("pallas.core.platform.shard.context.shard_id", lambda: 1)
+    monkeypatch.setattr(
+        "pallas.core.platform.shard.console_stats.read_worker_stats_file",
+        lambda shard_id: {},
+    )
+    import pallas_plugin_draw.draw_stats_store as ds
+
+    with ds._lock:
+        ds._day_key = "2026-07-27"
+        ds._hydrated = False
+        ds._ok_count = 0
+        ds._fail_count = 0
+        ds._image_count = 0
+        ds._cost_total = 0.0
+        ds._by_gateway.clear()
+        ds._by_provider.clear()
+        ds._by_model.clear()
+
+    snap = draw_stats_snapshot(include_persisted=True)
+    assert snap["ok_count"] == 0
+    assert snap["fail_count"] == 0
+
+
+def test_worker_scrubs_memory_matching_shared_file(tmp_path, monkeypatch) -> None:
+    reset_draw_stats_for_tests()
+    path = tmp_path / "draw_stats_daily.json"
+    payload = {
+        "v": 1,
+        "day_key": "2026-07-27",
+        "ok_count": 48,
+        "fail_count": 5,
+        "image_count": 48,
+        "cost_total": 0.98,
+        "cost_currency": "CNY",
+        "by_gateway": {"provider": {"ok_count": 48, "fail_count": 0, "image_count": 48, "cost_total": 0.98}},
+        "by_provider": {"AK": {"ok_count": 48, "fail_count": 0, "image_count": 48, "cost_total": 0.98}},
+        "by_model": {"m": {"ok_count": 48, "fail_count": 0, "image_count": 48, "cost_total": 0.98}},
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(
+        "pallas_plugin_draw.draw_stats_store.stats_file_path",
+        lambda: path,
+    )
+    monkeypatch.setattr(
+        "pallas_plugin_draw.draw_stats_store.today_key",
+        lambda: "2026-07-27",
+    )
+    monkeypatch.setattr("pallas.core.platform.shard.context.sharding_active", lambda: True)
+    monkeypatch.setattr("pallas.core.platform.shard.context.is_worker", lambda: True)
+    import pallas_plugin_draw.draw_stats_store as ds
+
+    with ds._lock:
+        ds._day_key = "2026-07-27"
+        ds._hydrated = True
+        ds._ok_count = 48
+        ds._fail_count = 5
+        ds._image_count = 48
+        ds._cost_total = 0.98
+        ds._cost_currency = "CNY"
+        ds._by_gateway.clear()
+        ds._by_provider.clear()
+        ds._by_model.clear()
+        ds._copy_breakdown(ds._by_gateway, payload["by_gateway"])
+        ds._copy_breakdown(ds._by_provider, payload["by_provider"])
+        ds._copy_breakdown(ds._by_model, payload["by_model"])
+
+    snap = draw_stats_snapshot(include_persisted=False)
+    assert snap["ok_count"] == 0
+    assert snap["fail_count"] == 0
+    assert snap["image_count"] == 0
+
+
 def test_worker_skips_shared_file_persist(tmp_path, monkeypatch) -> None:
     reset_draw_stats_for_tests()
     path = tmp_path / "draw_stats_daily.json"
