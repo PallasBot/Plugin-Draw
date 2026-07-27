@@ -15,6 +15,7 @@ _STATS_FILE = "draw_stats_daily.json"
 
 _lock = threading.Lock()
 _day_key = ""
+_hydrated = False
 _ok_count = 0
 _fail_count = 0
 _image_count = 0
@@ -90,30 +91,82 @@ def _bump_row(
         row["cost_total"] = float(row.get("cost_total") or 0) + cost
 
 
-def _rollover_if_needed_locked() -> None:
-    global _day_key, _ok_count, _fail_count, _image_count, _cost_total, _cost_currency
-    today = today_key()
-    if _day_key == today:
+def _copy_breakdown(dst: dict[str, dict[str, float | int]], src: Any) -> None:
+    if not isinstance(src, dict):
         return
-    if _day_key:
-        try:
-            _persist_locked(day_override=_day_key)
-        except Exception:
-            pass
-    _day_key = today
-    _ok_count = 0
-    _fail_count = 0
-    _image_count = 0
-    _cost_total = 0.0
-    _cost_currency = ""
-    _by_gateway.clear()
-    _by_provider.clear()
-    _by_model.clear()
-    _load_today_locked()
+    for key, metrics in src.items():
+        if not isinstance(metrics, dict):
+            continue
+        name = str(key or "").strip()
+        if not name:
+            continue
+        dst[name] = {
+            "ok_count": int(metrics.get("ok_count") or 0),
+            "fail_count": int(metrics.get("fail_count") or 0),
+            "image_count": int(metrics.get("image_count") or 0),
+            "cost_total": float(metrics.get("cost_total") or 0),
+        }
 
 
-def _load_today_locked() -> None:
+def _apply_raw_locked(raw: dict[str, Any]) -> None:
     global _ok_count, _fail_count, _image_count, _cost_total, _cost_currency
+    if _ok_count or _fail_count or _image_count or _cost_total or _by_gateway or _by_provider or _by_model:
+        return
+    _ok_count = int(raw.get("ok_count") or 0)
+    _fail_count = int(raw.get("fail_count") or 0)
+    _image_count = int(raw.get("image_count") or 0)
+    _cost_total = float(raw.get("cost_total") or 0)
+    _cost_currency = str(raw.get("cost_currency") or "").strip()
+    _copy_breakdown(_by_gateway, raw.get("by_gateway"))
+    _copy_breakdown(_by_provider, raw.get("by_provider"))
+    _copy_breakdown(_by_model, raw.get("by_model"))
+
+
+def _salvage_day_to_daily(day: str, raw: dict[str, Any]) -> None:
+    try:
+        from pallas.product.llm.llm_daily_stats_store import write_day_side
+
+        write_day_side(
+            day,
+            "ai",
+            {
+                "day_key": day,
+                "source": "bot",
+                "images": {**raw, "day_key": day, "source": "draw_plugin"},
+            },
+        )
+    except Exception:
+        pass
+
+
+def _persist_shared_allowed() -> bool:
+    try:
+        from pallas.core.platform.shard import context as shard_ctx
+
+        if shard_ctx.sharding_active() and shard_ctx.is_worker():
+            return False
+    except Exception:
+        pass
+    return True
+
+
+def _hydrate_from_disk_locked() -> None:
+    global _hydrated  # noqa: PLW0603
+    if _hydrated:
+        return
+    _hydrated = True
+    today = str(_day_key or today_key()).strip()[:10]
+
+    try:
+        from pallas.product.llm.shard_metric_hydrate import load_worker_day_metric
+
+        worker_raw = load_worker_day_metric(metric_key="llm_draw", day_key=today)
+        if isinstance(worker_raw, dict):
+            _apply_raw_locked(worker_raw)
+            return
+    except Exception:
+        pass
+
     path = stats_file_path()
     if not path.is_file():
         return
@@ -121,35 +174,41 @@ def _load_today_locked() -> None:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return
-    if not isinstance(raw, dict):
+    if not isinstance(raw, dict) or not raw.get("day_key"):
         return
-    day = str(raw.get("day_key") or "")
-    if day != _day_key:
+    file_day = str(raw.get("day_key") or "").strip()[:10]
+    if file_day and file_day != today:
+        _salvage_day_to_daily(file_day, raw)
         return
-    _ok_count = int(raw.get("ok_count") or 0)
-    _fail_count = int(raw.get("fail_count") or 0)
-    _image_count = int(raw.get("image_count") or 0)
-    _cost_total = float(raw.get("cost_total") or 0)
-    _cost_currency = str(raw.get("cost_currency") or "")
-    for bucket, dest in (
-        (raw.get("by_gateway"), _by_gateway),
-        (raw.get("by_provider"), _by_provider),
-        (raw.get("by_model"), _by_model),
-    ):
-        if not isinstance(bucket, dict):
-            continue
-        for key, metrics in bucket.items():
-            if not isinstance(metrics, dict):
-                continue
-            k = str(key).strip()
-            if not k:
-                continue
-            dest[k] = {
-                "ok_count": int(metrics.get("ok_count") or 0),
-                "fail_count": int(metrics.get("fail_count") or 0),
-                "image_count": int(metrics.get("image_count") or 0),
-                "cost_total": float(metrics.get("cost_total") or 0),
-            }
+    _apply_raw_locked(raw)
+
+
+def _rollover_if_needed_locked() -> None:
+    global _day_key, _hydrated, _ok_count, _fail_count, _image_count, _cost_total, _cost_currency
+    today = today_key()
+    if _day_key == today:
+        return
+    if _day_key:
+        try:
+            snap = _snapshot_locked(day_override=_day_key)
+            if _persist_shared_allowed():
+                _persist_locked(day_override=_day_key)
+            _salvage_day_to_daily(_day_key, snap)
+        except Exception:
+            pass
+        _ok_count = 0
+        _fail_count = 0
+        _image_count = 0
+        _cost_total = 0.0
+        _cost_currency = ""
+        _by_gateway.clear()
+        _by_provider.clear()
+        _by_model.clear()
+        _day_key = today
+        _hydrated = True
+        return
+    _day_key = today
+    _hydrated = False
 
 
 def _snapshot_locked(*, day_override: str | None = None) -> dict[str, Any]:
@@ -330,6 +389,7 @@ def record_draw_stats(
     try:
         with _lock:
             _rollover_if_needed_locked()
+            _hydrate_from_disk_locked()
             global _ok_count, _fail_count, _image_count, _cost_total, _cost_currency
             cost = max(0.0, float(cost_amount or 0))
             imgs = max(0, int(images)) if ok else 0
@@ -353,7 +413,8 @@ def record_draw_stats(
             if model_key:
                 mrow = _by_model.setdefault(model_key, dict(_EMPTY_ROW))
                 _bump_row(mrow, ok=ok, images=imgs, cost=cost)
-            _persist_locked()
+            if _persist_shared_allowed():
+                _persist_locked()
     except Exception:
         pass
 
@@ -380,36 +441,144 @@ def record_draw_stats_for_backend(
     )
 
 
+def _merge_breakdown_sum(
+    dst: dict[str, dict[str, float | int]],
+    src: Any,
+) -> None:
+    if not isinstance(src, dict):
+        return
+    for key, metrics in src.items():
+        if not isinstance(metrics, dict):
+            continue
+        name = str(key or "").strip()
+        if not name:
+            continue
+        row = dst.setdefault(name, dict(_EMPTY_ROW))
+        row["ok_count"] = int(row.get("ok_count") or 0) + int(metrics.get("ok_count") or 0)
+        row["fail_count"] = int(row.get("fail_count") or 0) + int(metrics.get("fail_count") or 0)
+        row["image_count"] = int(row.get("image_count") or 0) + int(metrics.get("image_count") or 0)
+        row["cost_total"] = float(row.get("cost_total") or 0) + float(metrics.get("cost_total") or 0)
+
+
+def merge_draw_snapshots(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    ok_count = 0
+    fail_count = 0
+    image_count = 0
+    cost_total = 0.0
+    cost_currency = ""
+    by_gateway: dict[str, dict[str, float | int]] = {}
+    by_provider: dict[str, dict[str, float | int]] = {}
+    by_model: dict[str, dict[str, float | int]] = {}
+    day_key = ""
+    updated_at = 0.0
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        day_key = str(row.get("day_key") or day_key)
+        try:
+            updated_at = max(updated_at, float(row.get("updated_at") or 0))
+        except (TypeError, ValueError):
+            pass
+        ok_count += int(row.get("ok_count") or 0)
+        fail_count += int(row.get("fail_count") or 0)
+        image_count += int(row.get("image_count") or 0)
+        cost_total += float(row.get("cost_total") or 0)
+        if not cost_currency:
+            cost_currency = str(row.get("cost_currency") or "").strip()
+        _merge_breakdown_sum(by_gateway, row.get("by_gateway"))
+        _merge_breakdown_sum(by_provider, row.get("by_provider"))
+        _merge_breakdown_sum(by_model, row.get("by_model"))
+    return {
+        "source": "draw_cluster",
+        "day_key": day_key or today_key(),
+        "updated_at": updated_at or time.time(),
+        "ok_count": ok_count,
+        "fail_count": fail_count,
+        "image_count": image_count,
+        "cost_total": cost_total,
+        "cost_currency": cost_currency,
+        "by_gateway": by_gateway,
+        "by_provider": by_provider,
+        "by_model": by_model,
+    }
+
+
 def draw_stats_snapshot(*, include_persisted: bool = True) -> dict[str, Any]:
     with _lock:
         _rollover_if_needed_locked()
-        snap = _snapshot_locked()
-    if include_persisted and not (snap.get("ok_count") or snap.get("fail_count") or snap.get("by_model")):
-        path = stats_file_path()
-        if path.is_file():
-            try:
-                raw = json.loads(path.read_text(encoding="utf-8"))
-                if isinstance(raw, dict) and str(raw.get("day_key") or "") == today_key():
-                    return {**raw, "source": "draw_plugin"}
-            except (OSError, json.JSONDecodeError):
-                pass
-    return snap
+        if include_persisted:
+            _hydrate_from_disk_locked()
+        return _snapshot_locked()
+
+
+def cluster_draw_stats_snapshot(*, max_stale_sec: float = 300.0) -> dict[str, Any]:
+    """分片 hub：合并本进程与各 worker stats 中的 llm_draw 快照。"""
+    rows = [draw_stats_snapshot(include_persisted=True)]
+    try:
+        from pallas.core.platform.shard import context as shard_ctx
+
+        if shard_ctx.sharding_active() and shard_ctx.is_hub():
+            from pallas.core.platform.shard.console_stats import iter_worker_shard_ids, read_worker_stats_file
+
+            for shard_id in iter_worker_shard_ids(max_stale_sec=max_stale_sec):
+                blob = read_worker_stats_file(shard_id)
+                draw = blob.get("llm_draw")
+                if not isinstance(draw, dict):
+                    continue
+                if (
+                    int(draw.get("ok_count") or 0) <= 0
+                    and int(draw.get("fail_count") or 0) <= 0
+                    and not draw.get("by_model")
+                    and not draw.get("by_provider")
+                ):
+                    continue
+                rows.append(draw)
+    except Exception:
+        pass
+    if len(rows) <= 1:
+        out = rows[0]
+        if isinstance(out, dict):
+            return {**out, "source": out.get("source") or "draw_plugin"}
+        return out
+    return merge_draw_snapshots(rows)
 
 
 def flush_draw_stats_sync() -> None:
+    try:
+        from pallas.core.platform.shard import context as shard_ctx
+
+        if shard_ctx.sharding_active() and shard_ctx.is_worker():
+            return
+    except Exception:
+        pass
     with _lock:
         _rollover_if_needed_locked()
+        _hydrate_from_disk_locked()
         try:
             _persist_locked()
         except Exception:
             pass
+    try:
+        from pallas.product.llm.llm_daily_stats_store import write_day_side
+
+        snap = draw_stats_snapshot(include_persisted=True)
+        if int(snap.get("ok_count") or 0) <= 0 and int(snap.get("fail_count") or 0) <= 0:
+            return
+        write_day_side(
+            str(snap.get("day_key") or today_key()),
+            "ai",
+            {"images": snap, "day_key": snap.get("day_key"), "source": "bot"},
+        )
+    except Exception:
+        pass
 
 
 def reset_draw_stats_for_tests() -> None:
     """仅测试用。"""
-    global _day_key, _ok_count, _fail_count, _image_count, _cost_total, _cost_currency
+    global _day_key, _hydrated, _ok_count, _fail_count, _image_count, _cost_total, _cost_currency
     with _lock:
-        _day_key = ""
+        _day_key = today_key()
+        _hydrated = True
         _ok_count = 0
         _fail_count = 0
         _image_count = 0

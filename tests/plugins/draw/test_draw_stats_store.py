@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
+
 from pallas_plugin_draw.draw_stats_store import (
     classify_draw_gateway,
     draw_stats_snapshot,
+    merge_draw_snapshots,
     record_draw_stats,
     reset_draw_stats_for_tests,
     resolve_draw_stats_cost,
@@ -71,3 +74,133 @@ def test_resolve_draw_stats_cost_prefers_response_usage() -> None:
     )
     assert amount == 0.25
     assert currency == "USD"
+
+
+def test_merge_draw_snapshots_sums_totals_and_buckets() -> None:
+    merged = merge_draw_snapshots([
+        {
+            "day_key": "2026-07-27",
+            "ok_count": 2,
+            "fail_count": 1,
+            "image_count": 2,
+            "cost_total": 0.1,
+            "by_gateway": {"provider": {"ok_count": 2, "fail_count": 0, "image_count": 2, "cost_total": 0.1}},
+            "by_provider": {"p1": {"ok_count": 2, "fail_count": 0, "image_count": 2, "cost_total": 0.1}},
+            "by_model": {"m1": {"ok_count": 2, "fail_count": 0, "image_count": 2, "cost_total": 0.1}},
+        },
+        {
+            "day_key": "2026-07-27",
+            "ok_count": 1,
+            "fail_count": 0,
+            "image_count": 3,
+            "cost_total": 0.2,
+            "by_gateway": {"provider": {"ok_count": 1, "fail_count": 0, "image_count": 3, "cost_total": 0.2}},
+            "by_provider": {"p1": {"ok_count": 1, "fail_count": 0, "image_count": 3, "cost_total": 0.2}},
+            "by_model": {"m1": {"ok_count": 1, "fail_count": 0, "image_count": 3, "cost_total": 0.2}},
+        },
+    ])
+    assert merged["source"] == "draw_cluster"
+    assert merged["ok_count"] == 3
+    assert merged["fail_count"] == 1
+    assert merged["image_count"] == 5
+    assert abs(merged["cost_total"] - 0.3) < 1e-9
+    assert merged["by_gateway"]["provider"]["ok_count"] == 3
+    assert merged["by_model"]["m1"]["image_count"] == 5
+
+
+def test_worker_skips_shared_file_persist(tmp_path, monkeypatch) -> None:
+    reset_draw_stats_for_tests()
+    path = tmp_path / "draw_stats_daily.json"
+    monkeypatch.setattr(
+        "pallas_plugin_draw.draw_stats_store.stats_file_path",
+        lambda: path,
+    )
+    monkeypatch.setattr("pallas.core.platform.shard.context.sharding_active", lambda: True)
+    monkeypatch.setattr("pallas.core.platform.shard.context.is_worker", lambda: True)
+    record_draw_stats(ok=True, gateway="provider", provider="p1", model="m1", images=1)
+    assert not path.is_file()
+    snap = draw_stats_snapshot(include_persisted=False)
+    assert snap["ok_count"] == 1
+
+
+def test_stale_file_salvaged_and_worker_rehydrates(tmp_path, monkeypatch) -> None:
+    import pallas_plugin_draw.draw_stats_store as ds
+
+    reset_draw_stats_for_tests()
+    path = tmp_path / "draw_stats_daily.json"
+    monkeypatch.setattr(ds, "stats_file_path", lambda: path)
+    monkeypatch.setattr(ds, "today_key", lambda: "2026-07-27")
+    written: list[tuple] = []
+
+    def fake_write(day: str, side: str, snapshot: dict) -> None:
+        written.append((day, side, snapshot))
+
+    monkeypatch.setattr("pallas.product.llm.llm_daily_stats_store.write_day_side", fake_write)
+
+    path.write_text(
+        json.dumps({
+            "v": 1,
+            "day_key": "2026-07-25",
+            "ok_count": 9,
+            "fail_count": 1,
+            "image_count": 9,
+            "cost_total": 1.0,
+            "by_gateway": {},
+            "by_provider": {"old": {"ok_count": 9, "fail_count": 1, "image_count": 9, "cost_total": 1.0}},
+            "by_model": {},
+        }),
+        encoding="utf-8",
+    )
+
+    with ds._lock:
+        ds._day_key = "2026-07-27"
+        ds._hydrated = False
+        ds._ok_count = 0
+        ds._fail_count = 0
+        ds._image_count = 0
+        ds._cost_total = 0.0
+        ds._by_gateway.clear()
+        ds._by_provider.clear()
+        ds._by_model.clear()
+
+    snap = draw_stats_snapshot(include_persisted=True)
+    assert snap["ok_count"] == 0
+    assert written
+    assert written[0][0] == "2026-07-25"
+    assert written[0][2]["images"]["ok_count"] == 9
+
+    reset_draw_stats_for_tests()
+    monkeypatch.setattr("pallas.core.platform.shard.context.sharding_active", lambda: True)
+    monkeypatch.setattr("pallas.core.platform.shard.context.is_worker", lambda: True)
+    monkeypatch.setattr("pallas.core.platform.shard.context.is_hub", lambda: False)
+    monkeypatch.setattr("pallas.core.platform.shard.context.shard_id", lambda: 2)
+    monkeypatch.setattr(
+        "pallas.core.platform.shard.console_stats.read_worker_stats_file",
+        lambda shard_id: {
+            "llm_draw": {
+                "day_key": "2026-07-27",
+                "ok_count": 4,
+                "fail_count": 0,
+                "image_count": 4,
+                "cost_total": 0.4,
+                "by_gateway": {"provider": {"ok_count": 4, "fail_count": 0, "image_count": 4, "cost_total": 0.4}},
+                "by_provider": {"p1": {"ok_count": 4, "fail_count": 0, "image_count": 4, "cost_total": 0.4}},
+                "by_model": {"m1": {"ok_count": 4, "fail_count": 0, "image_count": 4, "cost_total": 0.4}},
+            }
+        },
+    )
+    with ds._lock:
+        ds._day_key = "2026-07-27"
+        ds._hydrated = False
+        ds._ok_count = 0
+        ds._fail_count = 0
+        ds._image_count = 0
+        ds._cost_total = 0.0
+        ds._by_gateway.clear()
+        ds._by_provider.clear()
+        ds._by_model.clear()
+
+    restored = draw_stats_snapshot(include_persisted=True)
+    assert restored["ok_count"] == 4
+    assert restored["image_count"] == 4
+    assert restored["by_model"]["m1"]["ok_count"] == 4
