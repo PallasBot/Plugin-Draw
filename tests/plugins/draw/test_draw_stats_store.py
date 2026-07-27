@@ -48,6 +48,20 @@ def test_record_draw_stats_ok_and_fail(tmp_path, monkeypatch) -> None:
     assert snap["by_model"]["gpt-image-1"]["ok_count"] == 1
 
 
+def test_exhausted_failure_skips_fake_provider(tmp_path, monkeypatch) -> None:
+    reset_draw_stats_for_tests()
+    monkeypatch.setattr(
+        "pallas_plugin_draw.draw_stats_store.stats_file_path",
+        lambda: tmp_path / "draw_stats_daily.json",
+    )
+    record_draw_stats(ok=False, gateway="manual")
+    snap = draw_stats_snapshot()
+    assert snap["fail_count"] == 1
+    assert snap["by_gateway"]["manual"]["fail_count"] == 1
+    assert "exhausted" not in snap["by_provider"]
+    assert snap["by_provider"] == {}
+
+
 def test_resolve_draw_stats_cost_from_gateway_unit_price(monkeypatch) -> None:
     class _Backend:
         cost_per_image = 0.04

@@ -305,7 +305,8 @@ async def finish_draw_failure(
     at_user_id: int | None = _AT_USER_UNSET,
     last_status: int | None = None,
 ) -> None:
-    record_draw_stats(ok=False, gateway="manual", provider="exhausted", source="plugin")
+    # 线路用尽：失败计入总量/网关，不写伪提供方名
+    record_draw_stats(ok=False, gateway="manual", source="plugin")
     reply_at = resolve_reply_at_user_id(user_id, at_user_id)
     # last_status：与本地扩展签名对齐；社区版失败文案不暴露 HTTP 细节。
     if last_status not in (None, 0, 200):

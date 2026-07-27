@@ -487,9 +487,10 @@ def record_draw_stats(
             gw = str(gateway or "").strip().lower() or "manual"
             prow = _by_gateway.setdefault(gw, dict(_EMPTY_ROW))
             _bump_row(prow, ok=ok, images=imgs, cost=cost)
-            provider_key = str(provider or "").strip() or gw
-            brow = _by_provider.setdefault(provider_key, dict(_EMPTY_ROW))
-            _bump_row(brow, ok=ok, images=imgs, cost=cost)
+            provider_key = str(provider or "").strip()
+            if provider_key:
+                brow = _by_provider.setdefault(provider_key, dict(_EMPTY_ROW))
+                _bump_row(brow, ok=ok, images=imgs, cost=cost)
             model_key = str(model or "").strip()
             if model_key:
                 mrow = _by_model.setdefault(model_key, dict(_EMPTY_ROW))
