@@ -234,7 +234,10 @@ class Config(BaseModel, extra="ignore"):
         default=0,
         ge=0,
         le=1_000_000,
-        description="每人每群每日可调用画画次数上限；0 为不限制（按进程自然日）。",
+        description=(
+            "每人每群每日免费画画次数；0=不提供免费（有爱发电则只扣额度，未接入则拒画）；"
+            ">0 为每日免费上限。无限次请用无限次群/用户名单。"
+        ),
         json_schema_extra=_ui("限流与权限", 30),
     )
     pallas_image_draw_unlimited_group_ids: list[int] = Field(
