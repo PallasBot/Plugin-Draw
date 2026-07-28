@@ -100,3 +100,29 @@ def test_zero_free_limit_with_credits_uses_paid(monkeypatch) -> None:
         user_id=2,
     )
     assert d == DrawQuotaDecision(count_usage=True, paid_credit=True)
+
+
+def test_draw_unlimited_switch_skips_count(monkeypatch) -> None:
+    from pallas_plugin_draw import draw as draw_mod
+
+    class _Cfg:
+        draw_unlimited = True
+        draw_unlimited_group_ids_set = frozenset()
+        draw_unlimited_user_ids_set = frozenset()
+
+    monkeypatch.setattr(draw_mod, "image_gen_config", _Cfg())
+    assert draw_mod.draw_should_count_usage(1, 2) is False
+
+
+def test_draw_count_usage_when_quota_enabled(monkeypatch) -> None:
+    from pallas_plugin_draw import draw as draw_mod
+
+    class _Cfg:
+        draw_unlimited = False
+        draw_unlimited_group_ids_set = frozenset({9})
+        draw_unlimited_user_ids_set = frozenset({8})
+
+    monkeypatch.setattr(draw_mod, "image_gen_config", _Cfg())
+    assert draw_mod.draw_should_count_usage(1, 2) is True
+    assert draw_mod.draw_should_count_usage(9, 2) is False
+    assert draw_mod.draw_should_count_usage(1, 8) is False

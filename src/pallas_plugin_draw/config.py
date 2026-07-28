@@ -230,13 +230,21 @@ class Config(BaseModel, extra="ignore"):
         description="非空时仅允许这些群号使用画画指令；空表示不按群白名单限制。",
         json_schema_extra=_ui("限流与权限", 20),
     )
+    pallas_image_draw_unlimited: bool = Field(
+        default=False,
+        description=(
+            "开启后全实例不限制每日免费次数与额度扣次（等同旧版「每日上限填 0 即无限」）；"
+            "关闭时按下方免费次数与爱发电额度计费。"
+        ),
+        json_schema_extra=_ui("限流与权限", 25),
+    )
     pallas_image_draw_per_user_limit: int = Field(
         default=0,
         ge=0,
         le=1_000_000,
         description=(
             "每人每群每日免费画画次数；0=不提供免费（有爱发电则只扣额度，未接入则拒画）；"
-            ">0 为每日免费上限。无限次请用无限次群/用户名单。"
+            ">0 为每日免费上限。全实例无限请开「不限制每日次数」；部分无限用下方名单。"
         ),
         json_schema_extra=_ui("限流与权限", 30),
     )
@@ -604,6 +612,10 @@ class ImageGenSettings:
     @property
     def draw_group_whitelist(self) -> list[int]:
         return self._c.pallas_image_draw_group_whitelist
+
+    @property
+    def draw_unlimited(self) -> bool:
+        return bool(self._c.pallas_image_draw_unlimited)
 
     @property
     def draw_per_user_limit(self) -> int:

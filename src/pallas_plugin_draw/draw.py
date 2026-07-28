@@ -148,8 +148,14 @@ def draw_group_allowed(group_id: int) -> bool:
 
 
 def draw_should_count_usage(group_id: int, user_id: int) -> bool:
-    """是否走免费日限 / 额度扣次。仅无限次群/用户豁免；limit=0 表示无免费、须额度。"""
+    """是否走免费日限 / 额度扣次。
+
+    - 全实例「不限制每日次数」或无限次群/用户：不计次
+    - 否则计次；每日免费次数=0 表示无免费、走额度或拒画
+    """
     cfg = image_gen_config
+    if cfg.draw_unlimited:
+        return False
     if group_id in cfg.draw_unlimited_group_ids_set:
         return False
     if user_id in cfg.draw_unlimited_user_ids_set:
