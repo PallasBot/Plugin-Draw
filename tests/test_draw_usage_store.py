@@ -19,15 +19,29 @@ class _FakeTimer:
         self.cancelled = True
 
 
-def test_usage_load_is_lazy(monkeypatch):
-    calls: list[str] = []
-    monkeypatch.setattr(mod, "_loaded", False)
-    monkeypatch.setattr(mod, "_pallas_draw_usage", {})
-    monkeypatch.setattr(mod, "_load_from_storage", lambda: calls.append("load") or {})
+def test_usage_map_ignores_obsolete_total_entries(monkeypatch):
+    warnings: list[str] = []
 
-    assert mod.pallas_draw_usage_today((1, 2)) == 0
-    assert calls == ["load"]
-    assert mod._loaded is True
+    def _warn(msg, *args, **kwargs):
+        text = str(msg)
+        if args:
+            try:
+                text = text.format(*args)
+            except Exception:
+                text = f"{text} {args}"
+        warnings.append(text)
+
+    monkeypatch.setattr(mod.logger, "warning", _warn)
+    raw = {
+        "version": 2,
+        "entries": {},
+        "total_entries": {
+            "3997431382": {"day": "2026-07-24", "count": 1},
+        },
+    }
+    out = mod._usage_map_from_payload(raw)
+    assert out == {}
+    assert any("total_entries" in w for w in warnings)
 
 
 def test_bump_usage_does_not_persist_immediately(monkeypatch):

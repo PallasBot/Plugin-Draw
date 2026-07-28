@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 from pallas.api.paths import plugin_data_dir
 
 _USAGE_FILE = "pallas_draw_daily_usage.json"
+_STORAGE_PLUGIN = "draw"
 _STORAGE_KEY = "daily_usage"
 _VERSION = 1
 _FLUSH_DELAY_SEC = 5.0
@@ -75,7 +76,7 @@ def _entries_from_usage_map() -> dict[str, dict[str, object]]:
 def _usage_map_from_payload(raw: dict) -> dict[tuple[int, int], tuple[date, int]]:
     entries = raw.get("entries")
     if not isinstance(entries, dict):
-        return {}
+        entries = {}
     out: dict[tuple[int, int], tuple[date, int]] = {}
     for k, v in entries.items():
         parsed_key = _parse_key(str(k))
@@ -85,6 +86,13 @@ def _usage_map_from_payload(raw: dict) -> dict[tuple[int, int], tuple[date, int]
         if parsed_val is None:
             continue
         out[parsed_key] = parsed_val
+    # 历史错误格式：total_entries 仅有 user_id、无 group，无法还原限额键，忽略并告警一次
+    orphan = raw.get("total_entries")
+    if not out and isinstance(orphan, dict) and orphan:
+        logger.warning(
+            "draw draw_usage ignored obsolete total_entries ({} keys); expect entries as group_id:user_id",
+            len(orphan),
+        )
     return out
 
 
@@ -100,27 +108,44 @@ def _read_legacy_payload() -> dict | None:
     return raw if isinstance(raw, dict) else None
 
 
+def _deploy_usage_store():
+    from pallas.api.storage import DeployPluginStorage
+
+    return DeployPluginStorage(_STORAGE_PLUGIN)
+
+
 def _migrate_legacy_payload() -> dict[tuple[int, int], tuple[date, int]]:
     raw = _read_legacy_payload()
     path = usage_store_path()
     if raw is None and not path.is_file():
         return {}
-    payload = raw if isinstance(raw, dict) else {"version": _VERSION, "entries": {}}
-    from pallas.api.storage import DeployPluginStorage
-
-    DeployPluginStorage("draw").set(_STORAGE_KEY, payload)
+    usage = _usage_map_from_payload(raw if isinstance(raw, dict) else {})
+    payload = {"version": _VERSION, "entries": _entries_from_payload_map(usage)}
+    try:
+        _deploy_usage_store().set(_STORAGE_KEY, payload)
+    except Exception as e:
+        logger.warning(f"draw draw_usage migrate to plugin_storage failed: {e}")
+        return usage
     if path.is_file():
         backup = path.with_suffix(path.suffix + ".migrated")
         if not backup.exists():
             path.replace(backup)
-    return _usage_map_from_payload(payload)
+    return usage
+
+
+def _entries_from_payload_map(usage: dict[tuple[int, int], tuple[date, int]]) -> dict[str, dict[str, object]]:
+    today = date.today()
+    entries: dict[str, dict[str, object]] = {}
+    for (g, u), (d, c) in usage.items():
+        if d != today or c <= 0:
+            continue
+        entries[_key_str(g, u)] = {"day": d.isoformat(), "count": c}
+    return entries
 
 
 def _load_from_storage() -> dict[tuple[int, int], tuple[date, int]]:
     try:
-        from pallas.api.storage import DeployPluginStorage
-
-        store = DeployPluginStorage("draw")
+        store = _deploy_usage_store()
         raw = store.get(_STORAGE_KEY)
         if raw is None:
             return _migrate_legacy_payload()
@@ -162,9 +187,7 @@ def _prune_stale_memory() -> None:
 def _persist() -> None:
     _prune_stale_memory()
     payload = {"version": _VERSION, "entries": _entries_from_usage_map()}
-    from pallas.api.storage import DeployPluginStorage
-
-    DeployPluginStorage("draw").set(_STORAGE_KEY, payload)
+    _deploy_usage_store().set(_STORAGE_KEY, payload)
 
 
 def _start_flush_timer() -> None:
@@ -188,7 +211,7 @@ def flush_pending_draw_usage_sync() -> None:
             return
         try:
             _persist()
-        except OSError as e:
+        except Exception as e:
             logger.error(f"draw draw_usage persist failed: {e}")
             return
         _usage_dirty = False
