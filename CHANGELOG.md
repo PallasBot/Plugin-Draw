@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [4.1.13] - 2026-08-10
+
 - feat(draw): 「牛牛画画」接入 MessageRuntime prefix direct 路径，复用既有画图服务与复杂参考图行为
 
 ## [4.1.12] - 2026-07-28
