@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+- feat(draw): 「牛牛画画」接入 MessageRuntime prefix direct 路径，复用既有画图服务与复杂参考图行为
+
 ## [4.1.12] - 2026-07-28
 
 - feat(draw): 新增「不限制每日次数」开关，补齐旧版「上限填 0 即无限」；关闭时 `0` 仍表示无免费

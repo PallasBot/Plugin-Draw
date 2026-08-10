@@ -98,5 +98,6 @@ __plugin_meta__ = PluginMetadata(
     },
 )
 
+from . import direct as _draw_direct  # noqa: F401
 from . import draw as _pallas_draw  # noqa: F401
 from . import startup as _draw_startup  # noqa: F401
