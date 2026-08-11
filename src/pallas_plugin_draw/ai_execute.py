@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from nonebot import logger
+from pallas.api.logging import format_plugin_event
 
 if TYPE_CHECKING:
     import httpx
@@ -66,6 +67,13 @@ async def run_ai_service_draw(
             f"reason={circuit.recent_failure_reason or 'unknown'}",
         )
         if cfg.ai_runtime_fallback_to_plugin:
+            logger.info(
+                format_plugin_event(
+                    "draw_fallback",
+                    f"Bot [{bot_id}] fell back to plugin image gateway for user [{user_id}] "
+                    f"in group [{group_id}] because AI runtime circuit is open",
+                )
+            )
             return AiDrawRunResult(handled=False, fallback_plugin=True)
         await matcher.finish(message_at_user(user_id, DRAW_VAGUE_REPLY))
         return AiDrawRunResult(handled=True, image_sent=False)
@@ -85,12 +93,20 @@ async def run_ai_service_draw(
         return AiDrawRunResult(handled=True, image_sent=True)
     if ai_result.ok and ai_result.image_bytes is not None:
         record_ai_runtime_success()
-        await reply_generated_image_bytes(
+        image_sent = await reply_generated_image_bytes(
             matcher,
             ai_result.image_bytes,
             at_user_id=user_id,
             persist_draw=(usage_key[0], usage_key[1]),
         )
+        if image_sent:
+            logger.info(
+                format_plugin_event(
+                    "draw",
+                    f"Bot [{bot_id}] generated an image for user [{user_id}] "
+                    f"in group [{group_id}] via provider [{ai_result.provider_id or ai_result.backend_id or '-'}]",
+                )
+            )
         bump_pallas_draw_usage(usage_key, count_usage)
         gw, provider_key = classify_draw_gateway(
             provider_id=ai_result.provider_id,
@@ -134,5 +150,11 @@ async def run_ai_service_draw(
         )
         await matcher.finish(message_at_user(user_id, ai_result.reply_text or DRAW_VAGUE_REPLY))
         return AiDrawRunResult(handled=True, image_sent=False)
-    logger.info(f"bot [{bot_id}] draw fallback to plugin runtime in group [{group_id}]")
+    logger.info(
+        format_plugin_event(
+            "draw_fallback",
+            f"Bot [{bot_id}] fell back to plugin image gateway for user [{user_id}] "
+            f"in group [{group_id}] because AI runtime failed",
+        )
+    )
     return AiDrawRunResult(handled=False, fallback_plugin=True)

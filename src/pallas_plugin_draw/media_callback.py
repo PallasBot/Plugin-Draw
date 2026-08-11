@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from nonebot import logger
+from pallas.api.logging import format_plugin_event
 from pallas.api.platform import import_plugin_submodule
 
 
@@ -31,6 +33,13 @@ def on_draw_media_task_success(task: dict[str, Any], image_bytes: bytes, group_i
     image_api = import_plugin_submodule("draw", "image_api")
 
     runtime_state.record_ai_runtime_success()
+    logger.info(
+        format_plugin_event(
+            "draw",
+            f"Bot [{task.get('bot_id') or '-'}] generated an image for user [{task.get('user_id') or '-'}] "
+            f"in group [{group_id}] via provider [{task.get('provider_id') or task.get('backend_id') or '-'}]",
+        )
+    )
     persist_user = task.get("user_id")
     if persist_user is not None:
         image_api.schedule_persist_generated_draw(image_bytes, int(group_id), int(persist_user))

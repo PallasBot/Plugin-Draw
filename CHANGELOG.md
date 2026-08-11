@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+- feat(logging): 补充画图业务事件日志（出图完成 / 线路回退 / 插件就绪）
+
 ## [4.1.13] - 2026-08-10
 
 - feat(draw): 「牛牛画画」接入 MessageRuntime prefix direct 路径，复用既有画图服务与复杂参考图行为

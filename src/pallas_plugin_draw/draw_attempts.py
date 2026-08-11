@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 from nonebot import logger
 from nonebot.exception import FinishedException
+from pallas.api.logging import format_plugin_event
 from pallas.api.messages import (
     http_body_rejects_response_format,
     http_status_should_skip_backend,
@@ -203,6 +204,13 @@ async def run_backend_param_attempts(
                     persist_draw=(usage_key[0], usage_key[1]),
                     finish_on_error=not still_retrying,
                 ):
+                    logger.info(
+                        format_plugin_event(
+                            "draw",
+                            f"Bot [{bot_id}] generated an image for user [{user_id}] "
+                            f"in group [{group_id}] via backend [{backend.label}]",
+                        )
+                    )
                     await apply_usage_after_success(
                         usage_key=usage_key,
                         user_id=user_id,
