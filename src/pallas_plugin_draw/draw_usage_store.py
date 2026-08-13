@@ -7,6 +7,7 @@ from datetime import date
 from typing import TYPE_CHECKING
 
 from nonebot import logger
+from pallas.core.foundation.logging import log_rate_limited
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -90,7 +91,7 @@ def _usage_map_from_payload(raw: dict) -> dict[tuple[int, int], tuple[date, int]
     orphan = raw.get("total_entries")
     if not out and isinstance(orphan, dict) and orphan:
         logger.warning(
-            "draw draw_usage ignored obsolete total_entries ({} keys); expect entries as group_id:user_id",
+            "绘图用量忽略已废弃的 total_entries（{} 个键）；期望 entries 为 group_id:user_id 格式",
             len(orphan),
         )
     return out
@@ -103,7 +104,7 @@ def _read_legacy_payload() -> dict | None:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception as e:
-        logger.warning(f"draw draw_usage file invalid, ignored: {e}")
+        logger.warning("绘图用量文件无效，已忽略：{}", e)
         return None
     return raw if isinstance(raw, dict) else None
 
@@ -124,7 +125,7 @@ def _migrate_legacy_payload() -> dict[tuple[int, int], tuple[date, int]]:
     try:
         _deploy_usage_store().set(_STORAGE_KEY, payload)
     except Exception as e:
-        logger.warning(f"draw draw_usage migrate to plugin_storage failed: {e}")
+        logger.warning("绘图用量迁移到插件存储失败：{}", e)
         return usage
     if path.is_file():
         backup = path.with_suffix(path.suffix + ".migrated")
@@ -153,7 +154,7 @@ def _load_from_storage() -> dict[tuple[int, int], tuple[date, int]]:
             return {}
         return _usage_map_from_payload(raw)
     except Exception as e:
-        logger.warning(f"draw draw_usage storage read failed, fallback legacy: {e}")
+        logger.warning("绘图用量存储读取失败，回退到旧版数据：{}", e)
         raw = _read_legacy_payload()
         return _usage_map_from_payload(raw) if isinstance(raw, dict) else {}
 
@@ -212,7 +213,7 @@ def flush_pending_draw_usage_sync() -> None:
         try:
             _persist()
         except Exception as e:
-            logger.error(f"draw draw_usage persist failed: {e}")
+            logger.error("绘图用量持久化失败：{}", e)
             return
         _usage_dirty = False
 
@@ -244,8 +245,15 @@ def bump_pallas_draw_usage(usage_key: tuple[int, int], count_usage: bool) -> Non
             _pallas_draw_usage[usage_key] = (today, new_count)
         _usage_dirty = True
         _start_flush_timer()
-    logger.info(
-        f"draw draw usage bumped group={group_id} user={user_id} count={new_count} day={today.isoformat()}",
+    log_rate_limited(
+        logger,
+        "info",
+        "draw.usage_bump",
+        "Draw usage bumped for user [{}] in group [{}], daily count is now [{}] on [{}]",
+        user_id,
+        group_id,
+        new_count,
+        today.isoformat(),
     )
 
 

@@ -21,6 +21,7 @@ from pallas.api.media import (
     strip_data_url_base64,
 )
 from pallas.api.messages import user_failure_reply
+from pallas.core.foundation.logging import log_rate_limited
 
 from .config import ImageApiBackend, image_gen_config
 from .image_request_options import ImageGenRequestOptions
@@ -36,7 +37,7 @@ def schedule_persist_generated_draw(data: bytes, group_id: int, user_id: int) ->
 
             await persist_generated_draw(data, group_id, user_id)
         except Exception as e:
-            logger.warning(f"draw persist archive failed group={group_id}: {e}")
+            logger.warning("出图归档持久化失败，群 [{}]：{}", group_id, e)
 
     asyncio.create_task(job(), name=f"pallas_draw_archive:{group_id}:{user_id}")
 
@@ -69,7 +70,7 @@ def effective_http_transport() -> str:
         return "auto"
     if raw in ("httpx", "curl", "cffi"):
         return raw
-    logger.warning("unknown image http_transport {}, fallback to auto", raw)
+    logger.warning("未知图片 HTTP 传输方式 [{}]，已回退到 auto", raw)
     return "auto"
 
 
@@ -142,7 +143,14 @@ async def try_httpx_after_cffi_timeout(
     cap = httpx_cap_after_cffi_timeout(req_timeout_cap)
     if cap is None:
         return None
-    logger.info(f"draw cffi read timeout, retry httpx cap={cap:.0f}s (prioritize image)")
+    log_rate_limited(
+        logger,
+        "info",
+        "draw.cffi_timeout_retry",
+        "Cffi request timed out while reading the image, retrying via httpx with a [{}] seconds cap "
+        "to prioritize image delivery",
+        f"{cap:.0f}",
+    )
     return await httpx_call(cap)
 
 
@@ -290,11 +298,23 @@ async def post_generations_with_transport(
                 return ret
             if cffi_error_is_timeout(e):
                 raise
-            logger.warning(f"draw generations curl_cffi failed, fallback httpx: {e}")
+            log_rate_limited(
+                logger,
+                "warning",
+                "draw.generations_cffi_fallback",
+                "Image generations via cffi transport failed, falling back to httpx: {}",
+                e,
+            )
     try:
         return await httpx_post_generations(client, url, headers, payload, req_timeout_cap=tcap)
     except httpx.ConnectError as e:
-        logger.warning(f"draw generations httpx connect failed, fallback curl: {e}")
+        log_rate_limited(
+            logger,
+            "warning",
+            "draw.generations_connect_fallback",
+            "Image generations failed to connect via httpx, falling back to curl: {}",
+            e,
+        )
         return await curl_post_generations(url, headers, payload, req_timeout_cap=req_timeout_cap)
 
 
@@ -473,11 +493,23 @@ async def post_edits_with_transport(
                 return ret
             if cffi_error_is_timeout(e):
                 raise
-            logger.warning(f"draw edits curl_cffi failed, fallback httpx: {e}")
+            log_rate_limited(
+                logger,
+                "warning",
+                "draw.edits_cffi_fallback",
+                "Image edits via cffi transport failed, falling back to httpx: {}",
+                e,
+            )
     try:
         return await httpx_post_edits(client, image_blobs, prompt, backend, options=options, req_timeout_cap=tcap)
     except httpx.ConnectError as e:
-        logger.warning(f"draw edits httpx connect failed, fallback curl: {e}")
+        log_rate_limited(
+            logger,
+            "warning",
+            "draw.edits_connect_fallback",
+            "Image edits failed to connect via httpx, falling back to curl: {}",
+            e,
+        )
         return await curl_post_edits(image_blobs, prompt, backend, options=options, req_timeout_cap=tcap)
 
 
@@ -658,7 +690,13 @@ async def reply_from_image_api_json(
     try:
         data = json.loads(body_text)
     except Exception:
-        logger.error(f"draw api invalid json body_prefix={body_text[:500]!r}")
+        log_rate_limited(
+            logger,
+            "error",
+            "draw.invalid_json",
+            "Image API returned invalid JSON, body prefix [{}]",
+            body_text[:500],
+        )
         if finish_on_error:
             await matcher.finish(optional_message_at_user(at_user_id, DRAW_VAGUE_REPLY))
         return False
@@ -682,8 +720,13 @@ async def reply_from_image_api_json(
 
     async def send_validated_image(image_bytes: bytes) -> bool:
         if not is_valid_generated_image(image_bytes):
-            logger.warning(
-                f"draw generated image rejected: len={len(image_bytes)} head={image_bytes[:16]!r}",
+            log_rate_limited(
+                logger,
+                "warning",
+                "draw.image_rejected",
+                "Generated image was rejected because it is not a valid image: length [{}] bytes, header [{}]",
+                len(image_bytes),
+                image_bytes[:16],
             )
             return False
         await matcher.send(optional_message_at_user(at_user_id, MessageSegment.image(image_bytes)))
@@ -711,11 +754,23 @@ async def reply_from_image_api_json(
                 return True
         except httpx.HTTPError:
             pass
-        logger.error(f"draw download generated image failed url={remote_url}")
+        log_rate_limited(
+            logger,
+            "error",
+            "draw.download_failed",
+            "Failed to download the generated image from URL [{}]",
+            remote_url,
+        )
         if finish_on_error:
             await matcher.finish(optional_message_at_user(at_user_id, DRAW_VAGUE_REPLY))
         return False
-    logger.warning(f"draw response missing image url/b64 data_prefix={str(data)[:800]!r}")
+    log_rate_limited(
+        logger,
+        "warning",
+        "draw.no_image",
+        "Image API response is missing an image URL or base64 payload, data prefix [{}]",
+        str(data)[:800],
+    )
     if finish_on_error:
         await matcher.finish(optional_message_at_user(at_user_id, DRAW_VAGUE_REPLY))
     return False
@@ -729,8 +784,13 @@ async def reply_generated_image_bytes(
     persist_draw: tuple[int, int] | None = None,
 ) -> bool:
     if not is_valid_generated_image(image_bytes):
-        logger.warning(
-            f"draw generated image rejected: len={len(image_bytes)} head={image_bytes[:16]!r}",
+        log_rate_limited(
+            logger,
+            "warning",
+            "draw.image_rejected",
+            "Generated image was rejected because it is not a valid image: length [{}] bytes, header [{}]",
+            len(image_bytes),
+            image_bytes[:16],
         )
         return False
     await matcher.send(optional_message_at_user(at_user_id, MessageSegment.image(image_bytes)))

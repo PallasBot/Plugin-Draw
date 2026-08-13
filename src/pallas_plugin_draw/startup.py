@@ -1,5 +1,5 @@
-from nonebot import get_driver, logger
-from pallas.api.logging import format_plugin_event
+from nonebot import get_driver
+from pallas.api.logging import register_plugin_startup_ready
 from pallas.api.platform import DRAW_IMAGE_TASK_TYPE, register_media_task_hooks
 from pallas.api.storage import register_plugin_storage_startup_hook
 
@@ -17,4 +17,4 @@ register_media_task_hooks(
 @get_driver().on_startup
 async def _load_draw_usage_after_storage_registry() -> None:
     ensure_draw_usage_loaded()
-    logger.info(format_plugin_event("ready", "Registered draw command and media task hooks"))
+    register_plugin_startup_ready("draw", detail="已注册画画命令与媒体任务钩子")

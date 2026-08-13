@@ -62,9 +62,11 @@ async def run_ai_service_draw(
     if ai_runtime_circuit_is_open():
         circuit = ai_runtime_circuit_status()
         logger.warning(
-            f"bot [{bot_id}] draw ai runtime circuit open in group [{group_id}] "
-            f"failures={circuit.consecutive_failures} "
-            f"reason={circuit.recent_failure_reason or 'unknown'}",
+            "Bot [{}] AI runtime circuit is open in group [{}] after [{}] consecutive failures, recent reason [{}]",
+            bot_id,
+            group_id,
+            circuit.consecutive_failures,
+            circuit.recent_failure_reason or "unknown",
         )
         if cfg.ai_runtime_fallback_to_plugin:
             logger.info(
@@ -131,10 +133,12 @@ async def run_ai_service_draw(
 
     record_ai_runtime_failure(ai_result.reply_text or "ai_runtime_failed")
     logger.warning(
-        f"bot [{bot_id}] draw ai runtime failed in group [{group_id}] "
-        f"provider={ai_result.provider_id or '-'} "
-        f"backend={ai_result.backend_id or '-'} "
-        f"reply={ai_result.reply_text[:120]!r}",
+        "Bot [{}] AI runtime drawing failed in group [{}] via provider [{}] on backend [{}], reply [{}]",
+        bot_id,
+        group_id,
+        ai_result.provider_id or "-",
+        ai_result.backend_id or "-",
+        ai_result.reply_text[:120],
     )
     if not cfg.ai_runtime_fallback_to_plugin:
         gw, provider_key = classify_draw_gateway(

@@ -22,6 +22,7 @@ from pallas.api.safety import (
     is_message_scrub_blocked_async,
     scrub_intercept_log_preview,
 )
+from pallas.core.foundation.logging import log_rate_limited
 
 from .afdian_bridge import resolve_draw_quota
 from .config import active_image_gen_settings, image_gen_config
@@ -188,7 +189,7 @@ async def refund_draw_group_cooldown(group_id: int) -> None:
         return
     gconf = GroupConfig(group_id, cooldown=seconds)
     await gconf.reset_cooldown(PALLAS_DRAW_COOLDOWN_KEY)
-    logger.info(f"draw draw cooldown refunded group={group_id}")
+    logger.info("Draw cooldown refunded for group [{}]", group_id)
 
 
 pallas_draw = on_command(
@@ -337,6 +338,17 @@ async def run_pallas_draw_queued(
 ) -> None:
     group_id, _ = usage_key
     image_sent = False
+    log_rate_limited(
+        logger,
+        "info",
+        "draw.request_received",
+        "Bot [{}] received a draw request from user [{}] in group [{}]: prompt [{}] chars, [{}] reference images",
+        bot_id,
+        user_id,
+        group_id,
+        len(text),
+        len(ref_urls),
+    )
     try:
         async with get_pallas_draw_user_lock(group_id, user_id):
             limit_n = image_gen_config.draw_per_user_limit

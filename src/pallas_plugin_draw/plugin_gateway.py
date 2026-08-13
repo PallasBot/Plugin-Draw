@@ -70,7 +70,11 @@ async def run_plugin_gateway_draw(
     ref_urls = ref_result.inline_urls
     if ref_result.failed_tokens:
         logger.warning(
-            f"bot [{bot_id}] draw ref resolve partial in group [{group_id}] failed={len(ref_result.failed_tokens)}",
+            "Bot [{}] partially failed to resolve reference URLs for drawing in group [{}], "
+            "[{}] references could not be resolved",
+            bot_id,
+            group_id,
+            len(ref_result.failed_tokens),
         )
 
     if ref_urls and cfg.use_edits_for_reference_images:
@@ -128,8 +132,11 @@ async def run_plugin_gateway_draw(
                 return True
             if edits_abort[0] or http_status_edits_unsupported(last_status[0]):
                 logger.info(
-                    f"bot [{bot_id}] draw edits unsupported status={last_status[0]} "
-                    f"in group [{group_id}], fallback to generations",
+                    "Bot [{}] edits are not supported by the backend in group [{}] (status [{}]), "
+                    "falling back to generations",
+                    bot_id,
+                    group_id,
+                    last_status[0],
                 )
             else:
                 logger.warning(

@@ -138,7 +138,7 @@ async def probe_url(
             return await cffi_probe_get(url, headers, settings, timeout_sec)
         except (CffiRequestsError, OSError, ValueError) as e:
             if not cffi_error_is_timeout(e):
-                logger.warning(f"draw gateway probe cffi failed, fallback httpx: {e}")
+                logger.warning("网关探测 cffi 失败，已回退到 httpx：{}", e)
     return await httpx_probe_get(client, url, headers, timeout_sec)
 
 
@@ -192,7 +192,7 @@ async def probe_single_backend(
             last_error = str(e)[:120]
         except Exception as e:  # noqa: BLE001
             last_error = str(e)[:120]
-            logger.debug(f"draw gateway probe {backend.label} {url}: {e}")
+            logger.debug("网关探测失败，站点 [{}]、地址 [{}]：{}", backend.label, url, e)
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     if last_status is not None:
         return ServiceProbeResult(

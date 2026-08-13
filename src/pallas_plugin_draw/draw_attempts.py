@@ -18,6 +18,7 @@ from pallas.api.messages import (
     upstream_error_visible_to_user,
     user_failure_reply,
 )
+from pallas.core.foundation.logging import log_rate_limited
 
 from .afdian_bridge import apply_usage_after_success
 from .config import ImageApiBackend
@@ -68,14 +69,31 @@ def log_image_backend_unusable(
     issue = image_api_body_issue_label(body_text) or "image_send_failed"
     snippet = body_text[:200]
     if has_more:
-        logger.info(
-            f"bot [{bot_id}] draw {op} backend={backend_label} unusable "
-            f"in group [{group_id}] issue={issue} body={snippet!r}, trying next",
+        log_rate_limited(
+            logger,
+            "info",
+            "draw.backend_unusable_retry",
+            "Bot [{}] got an unusable [{}] response from backend [{}] in group [{}] "
+            "(issue [{}], body prefix [{}]), trying the next route",
+            bot_id,
+            op,
+            backend_label,
+            group_id,
+            issue,
+            snippet,
         )
     else:
-        logger.warning(
-            f"bot [{bot_id}] draw {op} backend={backend_label} unusable "
-            f"in group [{group_id}] issue={issue} body={snippet!r}",
+        log_rate_limited(
+            logger,
+            "warning",
+            "draw.backend_unusable",
+            "Bot [{}] got an unusable [{}] response from backend [{}] in group [{}] (issue [{}], body prefix [{}])",
+            bot_id,
+            op,
+            backend_label,
+            group_id,
+            issue,
+            snippet,
         )
 
 
@@ -140,9 +158,16 @@ async def run_backend_param_attempts(
             has_more_opts = opt_idx < len(param_attempts) - 1
             still_retrying = has_more_backend or has_more_opts
             if opt_idx > 0:
-                logger.info(
-                    f"bot [{bot_id}] draw {op} retry params "
-                    f"({req_opts.log_label()}) backend={backend.label} group=[{group_id}]",
+                log_rate_limited(
+                    logger,
+                    "info",
+                    "draw.retry_params",
+                    "Bot [{}] retrying [{}] with different params [{}] on backend [{}] in group [{}]",
+                    bot_id,
+                    op,
+                    req_opts.log_label(),
+                    backend.label,
+                    group_id,
                 )
             req_timeout_cap = request_timeout_for_backend_attempt(
                 deadline.remaining_seconds(),
@@ -150,10 +175,18 @@ async def run_backend_param_attempts(
                 param_attempts_remaining=len(param_attempts) - opt_idx,
                 primary_backend=(idx == 0),
             )
-            logger.info(
-                f"bot [{bot_id}] draw {op} request in group [{group_id}] "
-                f"backend={backend.label} params=({req_opts.log_label()}) "
-                f"timeout_cap={req_timeout_cap:.0f}s",
+            log_rate_limited(
+                logger,
+                "info",
+                "draw.request",
+                "Bot [{}] sent a [{}] request to backend [{}] in group [{}] with params [{}] "
+                "and a timeout cap of [{}] seconds",
+                bot_id,
+                op,
+                backend.label,
+                group_id,
+                req_opts.log_label(),
+                f"{req_timeout_cap:.0f}",
             )
             req_started = time.perf_counter()
             try:
@@ -172,28 +205,60 @@ async def run_backend_param_attempts(
                 err_text = format_transport_error(e)
                 # 传输层失败（超时/断连等）优先切备线，避免主网关参数重试耗尽总超时。
                 if has_more_backend:
-                    logger.info(
-                        f"bot [{bot_id}] draw {op} transport error "
-                        f"backend={backend.label} group=[{group_id}]: {err_text}, trying next backend",
+                    log_rate_limited(
+                        logger,
+                        "info",
+                        "draw.transport",
+                        "Bot [{}] hit a transport error while drawing [{}] via backend [{}] in group [{}] ({}), "
+                        "switching to the next backend",
+                        bot_id,
+                        op,
+                        backend.label,
+                        group_id,
+                        err_text,
                     )
                     break
                 if has_more_opts:
-                    logger.info(
-                        f"bot [{bot_id}] draw {op} transport error "
-                        f"backend={backend.label} group=[{group_id}]: {err_text}, trying next params",
+                    log_rate_limited(
+                        logger,
+                        "info",
+                        "draw.transport",
+                        "Bot [{}] hit a transport error while drawing [{}] via backend [{}] in group [{}] ({}), "
+                        "trying the next params",
+                        bot_id,
+                        op,
+                        backend.label,
+                        group_id,
+                        err_text,
                     )
                     continue
-                logger.warning(
-                    f"bot [{bot_id}] draw {op} transport error backend={backend.label} group=[{group_id}]: {err_text}",
+                log_rate_limited(
+                    logger,
+                    "warning",
+                    "draw.transport_failed",
+                    "Bot [{}] hit a transport error while drawing [{}] via backend [{}] in group [{}] ({})",
+                    bot_id,
+                    op,
+                    backend.label,
+                    group_id,
+                    err_text,
                 )
                 break
             last_body_holder[:] = [body_text]
             last_status_holder[:] = [status]
-            logger.info(
-                f"bot [{bot_id}] draw {op} response in group [{group_id}]: "
-                f"backend={backend.label} status={status} "
-                f"elapsed_ms={(time.perf_counter() - req_started) * 1000:.0f} "
-                f"body_len={len(body_text)}",
+            log_rate_limited(
+                logger,
+                "info",
+                "draw.response",
+                "Bot [{}] received a [{}] response from backend [{}] in group [{}] with status [{}], "
+                "elapsed [{}] ms, body length [{}]",
+                bot_id,
+                op,
+                backend.label,
+                group_id,
+                status,
+                f"{(time.perf_counter() - req_started) * 1000:.0f}",
+                len(body_text),
             )
             if status == 200:
                 if await reply_from_image_api_json(
@@ -263,39 +328,86 @@ async def run_backend_param_attempts(
                 if op == "edits" and http_status_edits_unsupported(status) and edits_abort_holder is not None:
                     edits_abort_holder[0] = True
                 if still_retrying:
-                    logger.info(
-                        f"bot [{bot_id}] draw {op} backend={backend.label} "
-                        f"status={status} in group [{group_id}], trying next backend",
+                    log_rate_limited(
+                        logger,
+                        "info",
+                        "draw.fallback",
+                        "Bot [{}] got status [{}] from backend [{}] while drawing [{}] in group [{}], "
+                        "trying the next backend",
+                        bot_id,
+                        status,
+                        backend.label,
+                        op,
+                        group_id,
                     )
                 else:
-                    logger.warning(
-                        f"bot [{bot_id}] draw {op} failed in group [{group_id}]: "
-                        f"backend={backend.label} status={status} body={body_text[:500]}",
+                    log_rate_limited(
+                        logger,
+                        "warning",
+                        "draw.attempt_failed",
+                        "Bot [{}] failed to [{}] in group [{}] via backend [{}] with status [{}], body prefix [{}]",
+                        bot_id,
+                        op,
+                        group_id,
+                        backend.label,
+                        status,
+                        body_text[:500],
                     )
                 break
             if status == 400 and http_body_rejects_response_format(body_text):
                 skip_backend = True
                 if still_retrying:
-                    logger.info(
-                        f"bot [{bot_id}] draw {op} backend={backend.label} "
-                        f"rejects response_format in group [{group_id}], trying next backend",
+                    log_rate_limited(
+                        logger,
+                        "info",
+                        "draw.fallback",
+                        "Bot [{}] backend [{}] rejected the response format while drawing [{}] in group [{}], "
+                        "trying the next backend",
+                        bot_id,
+                        backend.label,
+                        op,
+                        group_id,
                     )
                 break
             if http_status_should_try_next_param(status) and has_more_opts:
-                logger.info(
-                    f"bot [{bot_id}] draw {op} backend={backend.label} "
-                    f"status={status} in group [{group_id}], trying next params",
+                log_rate_limited(
+                    logger,
+                    "info",
+                    "draw.fallback",
+                    "Bot [{}] got status [{}] from backend [{}] while drawing [{}] in group [{}], "
+                    "trying the next params",
+                    bot_id,
+                    status,
+                    backend.label,
+                    op,
+                    group_id,
                 )
                 continue
             if still_retrying:
-                logger.info(
-                    f"bot [{bot_id}] draw {op} backend={backend.label} "
-                    f"status={status} in group [{group_id}], trying next",
+                log_rate_limited(
+                    logger,
+                    "info",
+                    "draw.fallback",
+                    "Bot [{}] got status [{}] from backend [{}] while drawing [{}] in group [{}], "
+                    "trying the next route",
+                    bot_id,
+                    status,
+                    backend.label,
+                    op,
+                    group_id,
                 )
             else:
-                logger.warning(
-                    f"bot [{bot_id}] draw {op} failed in group [{group_id}]: "
-                    f"backend={backend.label} status={status} body={body_text[:500]}",
+                log_rate_limited(
+                    logger,
+                    "warning",
+                    "draw.attempt_failed",
+                    "Bot [{}] failed to [{}] in group [{}] via backend [{}] with status [{}], body prefix [{}]",
+                    bot_id,
+                    op,
+                    group_id,
+                    backend.label,
+                    status,
+                    body_text[:500],
                 )
             break
         if skip_backend:
@@ -318,7 +430,7 @@ async def finish_draw_failure(
     reply_at = resolve_reply_at_user_id(user_id, at_user_id)
     # last_status：与本地扩展签名对齐；社区版失败文案不暴露 HTTP 细节。
     if last_status not in (None, 0, 200):
-        logger.info(f"draw exhausted last_status={last_status}")
+        logger.info("Draw attempts exhausted for the request, last upstream status [{}]", last_status)
     await matcher.finish(
         optional_message_at_user(
             reply_at,
