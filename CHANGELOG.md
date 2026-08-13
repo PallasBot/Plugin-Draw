@@ -3,6 +3,10 @@
 本文件依据 git tag 历史整理，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 新提交合入后请在 `## [Unreleased]` 下记录，发布时随版本 tag 归档。
 
+## [4.1.16] - 2026-08-14
+
+- refactor(log): 画图补请求入口日志，高频请求限频并按约定整改
+
 ## [4.1.15] - 2026-08-13
 
 - fix(draw): 修复「牛牛画画」在 MessageRuntime direct 路径下因缺少 matcher 上下文而失效，不再出图前无响应
