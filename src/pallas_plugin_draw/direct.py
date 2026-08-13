@@ -10,7 +10,7 @@ from pallas.api.runtime import (
     register_prefix_command_handler,
 )
 
-from .draw import pallas_draw_handle
+from .draw import pallas_draw, pallas_draw_handle
 
 DRAW_PREFIX = "牛牛画画"
 
@@ -38,7 +38,8 @@ async def draw(context: DirectCommandContext) -> DirectCommandResult:
 
     async def run() -> None:
         try:
-            await pallas_draw_handle(context.bot, context.event, args)
+            with pallas_draw().ensure_context(context.bot, context.event):
+                await pallas_draw_handle(context.bot, context.event, args)
         except FinishedException:
             pass
 

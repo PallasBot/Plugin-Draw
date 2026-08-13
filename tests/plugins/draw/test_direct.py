@@ -61,6 +61,29 @@ async def test_direct_draw_runs_existing_handler_as_a_completion_effect(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_direct_draw_runs_handler_inside_matcher_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nonebot.internal.matcher import current_bot, current_event
+
+    from pallas_plugin_draw import direct
+
+    seen: dict[str, object] = {}
+
+    async def spy(bot, event, args) -> None:
+        seen["bot"] = current_bot.get()
+        seen["event"] = current_event.get()
+
+    monkeypatch.setattr(direct, "pallas_draw_handle", spy)
+    context = make_context(Message("牛牛画画 小羊"))
+
+    result = await direct.draw(context)
+
+    assert len(result.effects) == 1
+    await result.effects[0].run()
+    assert seen["bot"] is context.bot
+    assert seen["event"] is context.event
+
+
+@pytest.mark.asyncio
 async def test_direct_draw_falls_back_for_a_glued_prefix() -> None:
     from pallas_plugin_draw.direct import draw
 
