@@ -126,6 +126,36 @@ class Config(BaseModel, extra="ignore"):
         ),
         json_schema_extra=_ui("网关", 50),
     )
+    pallas_image_input_text_cost_per_million: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=field_help(
+            "主线路文本输入 token 每百万单价",
+            "填写与画画费用统计币种一致的价格",
+            "响应含 usage 拆分时按 token 计费；0 表示不计此项",
+        ),
+        json_schema_extra=_ui("费用统计", 10),
+    )
+    pallas_image_input_image_cost_per_million: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=field_help(
+            "主线路图像输入 token 每百万单价",
+            "填写与画画费用统计币种一致的价格",
+            "响应含 usage 拆分时按 token 计费；0 表示不计此项",
+        ),
+        json_schema_extra=_ui("费用统计", 20),
+    )
+    pallas_image_output_image_cost_per_million: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=field_help(
+            "主线路图像输出 token 每百万单价",
+            "填写与画画费用统计币种一致的价格",
+            "响应含 usage 拆分时按 token 计费；0 表示不计此项",
+        ),
+        json_schema_extra=_ui("费用统计", 30),
+    )
     pallas_image_api_backends: list[ImageBackendEntry] = Field(
         default_factory=list,
         description=field_help(
@@ -432,6 +462,9 @@ class ImageApiBackend:
     omit_response_format: bool = False
     provider_id: str = ""
     cost_per_image: float = 0.0
+    input_text_cost_per_million: float = 0.0
+    input_image_cost_per_million: float = 0.0
+    output_image_cost_per_million: float = 0.0
 
 
 class ImageGenSettings:
@@ -478,6 +511,9 @@ class ImageGenSettings:
             omit_response_format: bool = False,
             provider_id: str = "",
             cost_per_image: float = 0.0,
+            input_text_cost_per_million: float = 0.0,
+            input_image_cost_per_million: float = 0.0,
+            output_image_cost_per_million: float = 0.0,
         ) -> None:
             sig = (url, key, model)
             if sig in seen:
@@ -497,6 +533,9 @@ class ImageGenSettings:
                     omit_response_format=omit_response_format,
                     provider_id=(provider_id or "").strip(),
                     cost_per_image=unit,
+                    input_text_cost_per_million=input_text_cost_per_million,
+                    input_image_cost_per_million=input_image_cost_per_million,
+                    output_image_cost_per_million=output_image_cost_per_million,
                 )
             )
 
@@ -520,6 +559,9 @@ class ImageGenSettings:
                 name=primary_name,
                 provider_id=primary_provider_id,
                 cost_per_image=self._c.pallas_image_cost_per_image,
+                input_text_cost_per_million=self._c.pallas_image_input_text_cost_per_million,
+                input_image_cost_per_million=self._c.pallas_image_input_image_cost_per_million,
+                output_image_cost_per_million=self._c.pallas_image_output_image_cost_per_million,
             )
         for i, entry in enumerate(self._c.pallas_image_api_backends):
             resolved = resolve_gateway_credentials(

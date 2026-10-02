@@ -91,6 +91,29 @@ def test_api_backends_keeps_cost_per_image() -> None:
     assert backends[1].cost_per_image == 0.12
 
 
+def test_token_prices_apply_only_to_primary_backend() -> None:
+    cfg = Config(
+        pallas_image_base_url="https://primary.example/",
+        pallas_image_api_key="sk-p",
+        pallas_image_model="gpt-image-2",
+        pallas_image_input_text_cost_per_million=5,
+        pallas_image_input_image_cost_per_million=8,
+        pallas_image_output_image_cost_per_million=30,
+        pallas_image_api_backends=[{"base_url": "https://backup.example/", "api_key": "sk-b"}],
+    )
+    primary, backup = ImageGenSettings(cfg).api_backends()
+    assert (
+        primary.input_text_cost_per_million,
+        primary.input_image_cost_per_million,
+        primary.output_image_cost_per_million,
+    ) == (5, 8, 30)
+    assert (
+        backup.input_text_cost_per_million,
+        backup.input_image_cost_per_million,
+        backup.output_image_cost_per_million,
+    ) == (0, 0, 0)
+
+
 def test_migrate_legacy_gateway_skips_when_primary_set() -> None:
     cfg = Config(
         pallas_image_base_url="https://primary.example/",

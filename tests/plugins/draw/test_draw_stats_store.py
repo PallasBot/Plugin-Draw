@@ -81,6 +81,30 @@ def test_resolve_draw_stats_cost_from_gateway_unit_price(monkeypatch) -> None:
     assert currency == "CNY"
 
 
+def test_resolve_draw_stats_cost_from_image_token_usage(monkeypatch) -> None:
+    class _Backend:
+        cost_per_image = 0.04
+        input_text_cost_per_million = 5.0
+        input_image_cost_per_million = 8.0
+        output_image_cost_per_million = 30.0
+
+    class _Cfg:
+        pallas_image_stats_cost_currency = "USD"
+
+    monkeypatch.setattr("pallas_plugin_draw.config.get_draw_config", lambda: _Cfg())
+    amount, currency = resolve_draw_stats_cost(
+        backend=_Backend(),
+        response_body={
+            "usage": {
+                "input_tokens_details": {"text_tokens": 1000, "image_tokens": 500},
+                "output_tokens_details": {"image_tokens": 2000, "text_tokens": 0},
+            }
+        },
+    )
+    assert amount == 0.069
+    assert currency == "USD"
+
+
 def test_resolve_draw_stats_cost_prefers_response_usage() -> None:
     amount, currency = resolve_draw_stats_cost(
         images=1,

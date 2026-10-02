@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import threading
 import time
 from typing import Any
@@ -379,6 +380,69 @@ def _cost_from_response(response_body: Any) -> tuple[float, str]:
     return 0.0, ""
 
 
+def _token_count(node: dict[str, Any], key: str) -> int | None:
+    raw = node.get(key)
+    if raw is None or isinstance(raw, bool):
+        return None
+    if isinstance(raw, float) and (not math.isfinite(raw) or not raw.is_integer()):
+        return None
+    try:
+        count = int(raw)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return count if count >= 0 else None
+
+
+def _cost_from_usage(response_body: Any, backend: Any) -> float | None:
+    """按 Images API usage 明细和主线路每百万 token 单价计费。"""
+    payload: Any = response_body
+    if isinstance(response_body, (bytes, bytearray)):
+        response_body = response_body.decode("utf-8", errors="ignore")
+    if isinstance(response_body, str):
+        try:
+            payload = json.loads(response_body)
+        except json.JSONDecodeError:
+            return None
+    usage = payload.get("usage") if isinstance(payload, dict) else None
+    if backend is None or not isinstance(usage, dict):
+        return None
+
+    try:
+        rates = tuple(
+            float(getattr(backend, name, 0.0) or 0.0)
+            for name in (
+                "input_text_cost_per_million",
+                "input_image_cost_per_million",
+                "output_image_cost_per_million",
+            )
+        )
+    except (TypeError, ValueError):
+        return None
+    if any(not math.isfinite(rate) or rate < 0 for rate in rates):
+        return None
+    if not any(rates):
+        return None
+
+    input_details = usage.get("input_tokens_details")
+    output_details = usage.get("output_tokens_details")
+    input_details = input_details if isinstance(input_details, dict) else {}
+    output_details = output_details if isinstance(output_details, dict) else None
+    counts = (
+        _token_count(input_details, "text_tokens"),
+        _token_count(input_details, "image_tokens"),
+        _token_count(output_details, "image_tokens")
+        if output_details is not None
+        else _token_count(usage, "output_tokens"),
+    )
+    if any(rate > 0 and count is None for rate, count in zip(rates, counts, strict=True)):
+        return None
+    try:
+        cost = sum(rate * (count or 0) for rate, count in zip(rates, counts, strict=True)) / 1_000_000
+    except OverflowError:
+        return None
+    return cost if math.isfinite(cost) else None
+
+
 def _unit_price_from_backend(backend: Any) -> float:
     if backend is None:
         return 0.0
@@ -429,6 +493,15 @@ def resolve_draw_stats_cost(
     amount, currency = _cost_from_response(response_body)
     if amount > 0:
         return amount, currency
+    token_cost = _cost_from_usage(response_body, backend)
+    if token_cost is not None:
+        try:
+            from .config import get_draw_config
+
+            currency = str(getattr(get_draw_config(), "pallas_image_stats_cost_currency", "") or "").strip().upper()
+        except Exception:
+            currency = ""
+        return token_cost, currency
     unit = 0.0
     if unit_price is not None:
         try:

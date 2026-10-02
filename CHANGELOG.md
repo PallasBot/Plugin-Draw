@@ -3,6 +3,10 @@
 本文件依据 git tag 历史整理，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 新提交合入后请在 `## [Unreleased]` 下记录，发布时随版本 tag 归档。
 
+## [Unreleased]
+
+- feat(stats): 按图像 API usage token 与主线路单价统计画图费用
+
 ## [4.1.16] - 2026-08-14
 
 - refactor(log): 画图补请求入口日志，高频请求限频并按约定整改
