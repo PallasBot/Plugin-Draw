@@ -8,6 +8,9 @@ requires-python = ">=3.12,<4.0"
 dependencies = [
     "nonebot2>=2.4.0",
     "nonebot-adapter-onebot>=2.4.6",
+    "anyio>=4.14.2",
+    "msgpack>=1.2.1",
+    "multidict>=6.9.1",
 ]
 
 [dependency-groups]
@@ -41,3 +44,12 @@ pallas-plugin-draw = ['pallas_plugin_draw']
 [tool.nonebot.adapters]
 "@local" = []
 nonebot-adapter-onebot = [{ name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" }]
+
+# 传递依赖安全下限。
+[tool.uv]
+constraint-dependencies = [
+    "anyio>=4.14.2",
+    "certifi>=2026.10.19",
+    "msgpack>=1.2.1",
+    "multidict>=6.9.1",
+]

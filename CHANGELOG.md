@@ -6,6 +6,7 @@
 ## [Unreleased]
 
 - feat(stats): 按图像 API usage token 与主线路单价统计画图费用
+- chore(deps): 声明 anyio、msgpack、multidict 运行时安全下限
 
 ## [4.1.16] - 2026-08-14
 
